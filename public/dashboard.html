@@ -123,6 +123,13 @@
 
   svg text { fill: var(--text-secondary); font-size: 11px; }
   .bar-label { fill: var(--text-primary); font-size: 12px; }
+
+  .viz-tooltip {
+    position: fixed; z-index: 50; pointer-events: none;
+    background: var(--text-primary); color: var(--surface-1);
+    font-size: 12px; line-height: 1.4; padding: 6px 9px; border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 220px;
+  }
 </style>
 
 <div class="viz-root">
@@ -166,6 +173,18 @@
         <span><span class="dot" style="background:var(--series-3)"></span>Concluídas</span>
       </div>
       <div id="timeseriesChart"><div class="empty">Conecte para carregar os dados.</div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Deploys por ambiente</h2>
+      <div class="legend" id="deployLegend"></div>
+      <div id="deployChart"><div class="empty">Conecte para carregar os dados.</div></div>
+    </div>
+    <div class="card">
+      <h2>Eventos por tipo</h2>
+      <div id="eventsChart"><div class="empty">Conecte para carregar os dados.</div></div>
     </div>
   </div>
 
@@ -247,9 +266,37 @@
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
 
+  const tooltip = document.createElement('div');
+  tooltip.className = 'viz-tooltip';
+  tooltip.hidden = true;
+  document.querySelector('.viz-root').appendChild(tooltip);
+
+  function positionTooltip(evt) {
+    const pad = 14;
+    let x = evt.clientX + pad, y = evt.clientY + pad;
+    if (x + 220 > window.innerWidth) x = evt.clientX - pad - 220;
+    if (y + 60 > window.innerHeight) y = evt.clientY - pad - 40;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+
+  function hoverable(node, html) {
+    node.style.cursor = 'pointer';
+    node.addEventListener('mouseenter', (evt) => {
+      tooltip.innerHTML = html;
+      tooltip.hidden = false;
+      positionTooltip(evt);
+    });
+    node.addEventListener('mousemove', positionTooltip);
+    node.addEventListener('mouseleave', () => { tooltip.hidden = true; });
+    return node;
+  }
+
+  const SVG_TAGS = new Set(['svg', 'g', 'rect', 'line', 'circle', 'path', 'text']);
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
   function el(tag, attrs, children) {
-    const node = document.createElementNS(tag === 'svg' || tag === 'g' || tag === 'rect' || tag === 'line' || tag === 'circle' || tag === 'path' || tag === 'text'
-      ? 'http://www.w3.org/2000/svg' : null, tag);
+    const node = SVG_TAGS.has(tag) ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
     for (const child of children || []) node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
     return node;
@@ -300,8 +347,8 @@
       const barMax = width - 150;
       const w = Math.max(4, (byDecision[d] / max) * barMax);
       svg.appendChild(el('text', { x: 0, y: y + 14, class: 'bar-label' }, [STATUS_LABEL[d]]));
-      const bar = el('rect', { x: 140, y, width: w, height: 16, rx: 4, ry: 4, fill: STATUS_COLOR[d] }, []);
-      bar.appendChild(el('title', {}, [STATUS_LABEL[d] + ': ' + byDecision[d]]));
+      const bar = el('rect', { x: 140, y, width: w, height: 16, rx: 4, ry: 4, fill: STATUS_COLOR[d], 'aria-label': STATUS_LABEL[d] + ': ' + byDecision[d] }, []);
+      hoverable(bar, STATUS_LABEL[d] + '<br><strong>' + byDecision[d] + '</strong> decisões');
       svg.appendChild(bar);
       svg.appendChild(el('text', { x: 140 + w + 8, y: y + 14, class: 'bar-label' }, [String(byDecision[d])]));
     });
@@ -338,17 +385,95 @@
     rows.forEach((r, i) => {
       const x = xFor(i);
       const label = new Date(r.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      const cStarted = el('circle', { cx: x, cy: yFor(r.started), r: 4, fill: 'var(--series-1)' }, []);
-      cStarted.appendChild(el('title', {}, [label + ' — iniciadas: ' + r.started]));
+      const cStarted = el('circle', { cx: x, cy: yFor(r.started), r: 4, fill: 'var(--series-1)', 'aria-label': label + ' iniciadas: ' + r.started }, []);
+      hoverable(cStarted, label + '<br>Iniciadas: <strong>' + r.started + '</strong>');
       svg.appendChild(cStarted);
-      const cDone = el('circle', { cx: x, cy: yFor(r.done), r: 4, fill: 'var(--series-3)' }, []);
-      cDone.appendChild(el('title', {}, [label + ' — concluídas: ' + r.done]));
+      const cDone = el('circle', { cx: x, cy: yFor(r.done), r: 4, fill: 'var(--series-3)', 'aria-label': label + ' concluídas: ' + r.done }, []);
+      hoverable(cDone, label + '<br>Concluídas: <strong>' + r.done + '</strong>');
       svg.appendChild(cDone);
       if (i === 0 || i === rows.length - 1 || i % Math.ceil(rows.length / 6) === 0) {
         svg.appendChild(el('text', { x, y: height - 4, 'text-anchor': 'middle' }, [label]));
       }
     });
 
+    target.appendChild(svg);
+  }
+
+  const DEPLOY_STATUS_COLOR = {
+    succeeded: 'var(--status-good)',
+    failed: 'var(--status-critical)',
+    rolled_back: 'var(--status-warning)',
+    started: 'var(--text-muted)',
+  };
+  const DEPLOY_STATUS_LABEL = { succeeded: 'sucesso', failed: 'falhou', rolled_back: 'rollback', started: 'em andamento' };
+  const ENV_LABEL = { dev: 'Dev', hml: 'Homologação', prod: 'Produção' };
+
+  function renderDeploymentsChart(rows) {
+    const target = $('deployChart');
+    target.innerHTML = '';
+    if (!rows.length) { target.innerHTML = '<div class="empty">Nenhum deploy registrado ainda.</div>'; return; }
+
+    const byEnv = {};
+    for (const row of rows) {
+      (byEnv[row.environment] ??= []).push(row);
+    }
+    const envs = ['dev', 'hml', 'prod'].filter((e) => byEnv[e]);
+    const totals = envs.map((e) => byEnv[e].reduce((s, r) => s + r.count, 0));
+    const max = Math.max(...totals, 1);
+
+    const width = 420, rowH = 34, height = envs.length * rowH + 10;
+    const svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: '100%', height, role: 'img' }, []);
+    const barMax = width - 150;
+
+    envs.forEach((envName, i) => {
+      const y = i * rowH + 8;
+      svg.appendChild(el('text', { x: 0, y: y + 14, class: 'bar-label' }, [ENV_LABEL[envName] || envName]));
+      let cursorX = 140;
+      const total = byEnv[envName].reduce((s, r) => s + r.count, 0);
+      byEnv[envName].forEach((r) => {
+        const w = Math.max(3, (r.count / max) * barMax - 2);
+        const seg = el('rect', {
+          x: cursorX, y, width: w, height: 16, rx: 4, ry: 4,
+          fill: DEPLOY_STATUS_COLOR[r.status] || 'var(--text-muted)',
+          'aria-label': (ENV_LABEL[envName] || envName) + ' ' + (DEPLOY_STATUS_LABEL[r.status] || r.status) + ': ' + r.count,
+        }, []);
+        hoverable(seg, (ENV_LABEL[envName] || envName) + ' — ' + (DEPLOY_STATUS_LABEL[r.status] || r.status) + '<br><strong>' + r.count + '</strong> deploy(s)');
+        svg.appendChild(seg);
+        cursorX += w + 2;
+      });
+      svg.appendChild(el('text', { x: cursorX + 6, y: y + 14, class: 'bar-label' }, [String(total)]));
+    });
+    target.appendChild(svg);
+
+    const legendRows = [...new Set(rows.map((r) => r.status))];
+    const legend = $('deployLegend');
+    legend.innerHTML = '';
+    for (const status of legendRows) {
+      const dot = el('span', { class: 'dot', style: 'background:' + (DEPLOY_STATUS_COLOR[status] || 'var(--text-muted)') }, []);
+      legend.appendChild(el('span', {}, [dot, DEPLOY_STATUS_LABEL[status] || status]));
+    }
+  }
+
+  function renderEventsChart(rows) {
+    const target = $('eventsChart');
+    target.innerHTML = '';
+    if (!rows.length) { target.innerHTML = '<div class="empty">Nenhum evento registrado ainda.</div>'; return; }
+
+    const top = rows.slice(0, 8);
+    const max = Math.max(...top.map((r) => r.count), 1);
+    const width = 420, rowH = 28, height = top.length * rowH + 10;
+    const svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: '100%', height, role: 'img' }, []);
+    const barMax = width - 150;
+
+    top.forEach((r, i) => {
+      const y = i * rowH + 6;
+      const w = Math.max(4, (r.count / max) * barMax);
+      svg.appendChild(el('text', { x: 0, y: y + 13, class: 'bar-label' }, [r.event_type]));
+      const bar = el('rect', { x: 140, y, width: w, height: 14, rx: 4, ry: 4, fill: 'var(--series-1)', 'aria-label': r.event_type + ': ' + r.count }, []);
+      hoverable(bar, r.event_type + '<br><strong>' + r.count + '</strong> eventos');
+      svg.appendChild(bar);
+      svg.appendChild(el('text', { x: 140 + w + 8, y: y + 13, class: 'bar-label' }, [String(r.count)]));
+    });
     target.appendChild(svg);
   }
 
@@ -382,10 +507,14 @@
     ]), 'Nenhuma organização encontrada.');
   }
 
+  function orgName(slug) {
+    return state.organizations.find((o) => o.organization_slug === slug)?.organization_name || slug;
+  }
+
   function renderProjectTable(rows) {
     renderTable('projectTable', rows, (r) => {
       const tr = el('tr', {}, [
-        el('td', {}, [r.organization_slug]),
+        el('td', {}, [orgName(r.organization_slug)]),
         el('td', {}, [r.project_name]),
       ]);
       tr.appendChild(ratioCell(r.work_items_done, r.work_items_total));
@@ -401,7 +530,7 @@
   function renderActorTable(rows) {
     renderTable('actorTable', rows, (r) => el('tr', {}, [
       el('td', {}, [r.display_name + ' (' + r.abe_email + ')']),
-      el('td', {}, [r.organization_slug]),
+      el('td', {}, [orgName(r.organization_slug)]),
       el('td', { class: 'num' }, [String(r.total_executions)]),
       el('td', { class: 'num' }, [String(r.done_executions)]),
       el('td', { class: 'num' }, [String(r.approvals_count)]),
@@ -444,6 +573,8 @@
     renderTiles(summary);
     renderPolicyChart(summary.policy_decisions);
     renderTimeseries(timeseries.items);
+    renderDeploymentsChart(summary.deployments);
+    renderEventsChart(summary.events_by_type);
     renderOrgTable(orgs.items);
     renderProjectTable(projects.items);
     renderActorTable(actors.items);

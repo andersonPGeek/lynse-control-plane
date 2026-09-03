@@ -329,14 +329,23 @@ async function registerDeployment(body) {
 async function updateExecutionStatus(id, body) {
   requireFields(body, ['status']);
   if (!EXECUTION_STATUSES.has(body.status)) throw new HttpError(400, 'Status inválido');
-  const result = await query(
-    `UPDATE executions SET status = $2,
-       ended_at = CASE WHEN $2 IN ('done','cancelled') THEN COALESCE(ended_at,now()) ELSE ended_at END
-     WHERE id = $1 RETURNING *`,
-    [id, body.status],
-  );
-  if (!result.rowCount) throw new HttpError(404, 'Execução não encontrada');
-  return result.rows[0];
+  return transaction(async (client) => {
+    const result = await client.query(
+      `UPDATE executions SET status = $2,
+         ended_at = CASE WHEN $2 IN ('done','cancelled') THEN COALESCE(ended_at,now()) ELSE ended_at END
+       WHERE id = $1 RETURNING *`,
+      [id, body.status],
+    );
+    if (!result.rowCount) throw new HttpError(404, 'Execução não encontrada');
+    if (body.status === 'done' || body.status === 'cancelled') {
+      await client.query(
+        `UPDATE work_items SET status = $2
+           WHERE id = (SELECT work_item_id FROM executions WHERE id = $1)`,
+        [id, body.status],
+      );
+    }
+    return result.rows[0];
+  });
 }
 
 async function completeExecution(id) {
