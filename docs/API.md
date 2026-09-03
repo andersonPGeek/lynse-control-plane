@@ -26,6 +26,9 @@ Base local: `http://localhost:3333`. Todas as rotas, exceto `/health`, exigem `x
 | `GET` | `/api/v1/analytics/actors` | indicadores agregados por ABE (`?organization_slug=&project_slug=`) |
 | `GET` | `/api/v1/analytics/timeseries` | execuções iniciadas/concluídas por dia (`?project_slug=&days=`) |
 | `GET` | `/dashboard` | página HTML com os gráficos e tabelas de indicadores (sem `x-api-key`; a chave é informada na própria página) |
+| `POST` | `/api/v1/admin/api-keys` | cria um ABE (se necessário) e uma chave pessoal para ele — **requer a chave administrativa** |
+| `GET` | `/api/v1/admin/api-keys` | lista as chaves emitidas (sem expor o valor) — **requer a chave administrativa** |
+| `POST` | `/api/v1/admin/api-keys/{id}/revoke` | revoga uma chave — **requer a chave administrativa** |
 
 ## Abrir execução
 
@@ -118,6 +121,25 @@ curl -X POST http://localhost:3333/api/v1/integrations/deploy \
 ```
 
 Um deploy de produção bem-sucedido move a execução para `observing`. O endpoint `complete` exige os gates `plan`, `pr` e `deploy`, além de um deploy de produção bem-sucedido.
+
+## Chaves por desenvolvedor
+
+A chave em `LYNSE_API_KEY` (`config.apiKey`) é a **chave administrativa** — só ela pode gerenciar chaves. Cada desenvolvedor deve receber uma chave pessoal em vez de usar a administrativa no dia a dia:
+
+```bash
+curl -X POST https://lynse-control-plane.onrender.com/api/v1/admin/api-keys \
+  -H 'content-type: application/json' \
+  -H 'x-api-key: <CHAVE ADMINISTRATIVA>' \
+  -d '{"email": "dev@empresa.com", "display_name": "Nome do Dev"}'
+```
+
+A resposta traz `api_key` em texto puro **uma única vez** — não fica recuperável depois, só o hash é armazenado. Com uma chave pessoal, o `/api/v1/executions/start` não exige mais `project_slug`/`repository_slug` pré-cadastrados nem `abe_email`: a organização e a identidade do ABE vêm da própria chave, e o projeto/repositório são criados automaticamente na primeira execução se ainda não existirem (sempre dentro da organização do dono da chave). A chave administrativa mantém o comportamento antigo (exige tudo explícito, não cria nada automaticamente).
+
+Revogar:
+```bash
+curl -X POST https://lynse-control-plane.onrender.com/api/v1/admin/api-keys/<ID>/revoke \
+  -H 'x-api-key: <CHAVE ADMINISTRATIVA>'
+```
 
 ## Indicadores (analytics)
 

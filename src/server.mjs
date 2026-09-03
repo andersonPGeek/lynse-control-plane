@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +53,23 @@ function apiKeyMatches(received) {
   return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
+function hashApiKey(rawKey) {
+  return createHash('sha256').update(rawKey).digest('hex');
+}
+
+async function resolveActor(receivedKey) {
+  if (!receivedKey) return null;
+  const result = await query(
+    `SELECT a.id, a.email, a.display_name, a.organization_id, o.slug AS organization_slug
+       FROM api_keys k
+       JOIN actors a ON a.id = k.actor_id
+       JOIN organizations o ON o.id = a.organization_id
+      WHERE k.key_hash = $1 AND k.revoked_at IS NULL`,
+    [hashApiKey(receivedKey)],
+  );
+  return result.rowCount ? result.rows[0] : null;
+}
+
 async function readJson(request) {
   const chunks = [];
   let size = 0;
@@ -79,20 +96,52 @@ function matchPath(pathname, expression) {
   return match ? match.groups ?? {} : null;
 }
 
-async function startExecution(body) {
-  requireFields(body, ['external_ref', 'project_slug', 'repository_slug', 'abe_email']);
+async function startExecution(body, actor) {
+  requireFields(body, actor ? ['external_ref', 'repository_slug'] : ['external_ref', 'project_slug', 'repository_slug', 'abe_email']);
   const mode = ['audit', 'enforcement'].includes(body.mode) ? body.mode : config.defaultMode;
+  const projectSlug = body.project_slug || body.repository_slug;
 
   return transaction(async (client) => {
-    const context = await client.query(
-      `SELECT p.id AS project_id, p.organization_id, r.id AS repository_id
-         FROM projects p
-         JOIN repositories r ON r.project_id = p.id
-        WHERE p.slug = $1 AND r.slug = $2`,
-      [body.project_slug, body.repository_slug],
-    );
-    if (!context.rowCount) throw new HttpError(404, 'Projeto ou repositório não encontrado');
-    const ids = context.rows[0];
+    let ids;
+    if (actor) {
+      const context = await client.query(
+        `SELECT p.id AS project_id, p.organization_id, r.id AS repository_id
+           FROM projects p
+           JOIN repositories r ON r.project_id = p.id
+          WHERE p.slug = $1 AND r.slug = $2 AND p.organization_id = $3`,
+        [projectSlug, body.repository_slug, actor.organization_id],
+      );
+      if (context.rowCount) {
+        ids = context.rows[0];
+      } else {
+        const project = await client.query(
+          `INSERT INTO projects (organization_id, slug, name)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (organization_id, slug) DO UPDATE SET name = projects.name
+           RETURNING id, organization_id`,
+          [actor.organization_id, projectSlug, body.project_name ?? projectSlug],
+        );
+        const repository = await client.query(
+          `INSERT INTO repositories (project_id, slug, remote_url, default_branch)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (project_id, slug) DO UPDATE SET
+             remote_url = COALESCE(EXCLUDED.remote_url, repositories.remote_url)
+           RETURNING id`,
+          [project.rows[0].id, body.repository_slug, body.context_snapshot?.git_remote ?? null, body.default_branch ?? 'main'],
+        );
+        ids = { project_id: project.rows[0].id, organization_id: actor.organization_id, repository_id: repository.rows[0].id };
+      }
+    } else {
+      const context = await client.query(
+        `SELECT p.id AS project_id, p.organization_id, r.id AS repository_id
+           FROM projects p
+           JOIN repositories r ON r.project_id = p.id
+          WHERE p.slug = $1 AND r.slug = $2`,
+        [projectSlug, body.repository_slug],
+      );
+      if (!context.rowCount) throw new HttpError(404, 'Projeto ou repositório não encontrado');
+      ids = context.rows[0];
+    }
 
     if (body.claude_session_id) {
       const existing = await client.query(
@@ -108,14 +157,18 @@ async function startExecution(body) {
       if (existing.rowCount) return { ...existing.rows[0], reused: true };
     }
 
-    const actor = await client.query(
-      `INSERT INTO actors (organization_id, email, display_name, role)
-       VALUES ($1, $2, $3, 'abe')
-       ON CONFLICT (organization_id, email) DO UPDATE
-         SET display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), actors.display_name)
-       RETURNING id`,
-      [ids.organization_id, body.abe_email, body.abe_name ?? body.abe_email.split('@')[0]],
-    );
+    let abeId = actor?.id;
+    if (!abeId) {
+      const abe = await client.query(
+        `INSERT INTO actors (organization_id, email, display_name, role)
+         VALUES ($1, $2, $3, 'abe')
+         ON CONFLICT (organization_id, email) DO UPDATE
+           SET display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), actors.display_name)
+         RETURNING id`,
+        [ids.organization_id, body.abe_email, body.abe_name ?? body.abe_email.split('@')[0]],
+      );
+      abeId = abe.rows[0].id;
+    }
 
     const workItem = await client.query(
       `INSERT INTO work_items
@@ -150,7 +203,7 @@ async function startExecution(body) {
       [
         workItem.rows[0].id,
         ids.repository_id,
-        actor.rows[0].id,
+        abeId,
         mode,
         body.branch_name ?? null,
         JSON.stringify(body.context_snapshot ?? {}),
@@ -250,28 +303,89 @@ async function evaluateAndStorePolicy(body) {
   return { ...result, mode };
 }
 
-async function createApproval(body) {
-  requireFields(body, ['execution_id', 'abe_email', 'gate', 'decision']);
+async function createApproval(body, actor) {
+  const abeEmail = actor?.email ?? body.abe_email;
+  requireFields({ ...body, abe_email: abeEmail }, ['execution_id', 'abe_email', 'gate', 'decision']);
   if (!['plan', 'pr', 'deploy', 'rollback', 'close'].includes(body.gate)) {
     throw new HttpError(400, 'Gate inválido');
   }
   if (!['approved', 'rejected', 'changes_requested'].includes(body.decision)) {
     throw new HttpError(400, 'Decisão inválida');
   }
-  const actor = await query(
-    `SELECT a.id
-       FROM actors a
-       JOIN executions e ON e.abe_id = a.id
-      WHERE e.id = $1 AND a.email = $2`,
-    [body.execution_id, body.abe_email],
-  );
-  if (!actor.rowCount) throw new HttpError(404, 'ABE não encontrado para esta execução');
+  const approver = actor?.id
+    ? await query(
+        `SELECT a.id FROM actors a JOIN executions e ON e.abe_id = a.id WHERE e.id = $1 AND a.id = $2`,
+        [body.execution_id, actor.id],
+      )
+    : await query(
+        `SELECT a.id
+           FROM actors a
+           JOIN executions e ON e.abe_id = a.id
+          WHERE e.id = $1 AND a.email = $2`,
+        [body.execution_id, abeEmail],
+      );
+  if (!approver.rowCount) throw new HttpError(404, 'ABE não encontrado para esta execução');
   const result = await query(
     `INSERT INTO approvals (execution_id, actor_id, gate, decision, rationale)
      VALUES ($1,$2,$3,$4,$5)
      RETURNING *`,
-    [body.execution_id, actor.rows[0].id, body.gate, body.decision, body.rationale ?? null],
+    [body.execution_id, approver.rows[0].id, body.gate, body.decision, body.rationale ?? null],
   );
+  return result.rows[0];
+}
+
+async function createApiKey(body) {
+  requireFields(body, ['email']);
+  const organizationSlug = body.organization_slug || 'lynse-demo';
+  const organization = await query('SELECT id FROM organizations WHERE slug = $1', [organizationSlug]);
+  if (!organization.rowCount) throw new HttpError(404, `Organização '${organizationSlug}' não encontrada`);
+
+  return transaction(async (client) => {
+    const actorResult = await client.query(
+      `INSERT INTO actors (organization_id, email, display_name, role)
+       VALUES ($1, $2, $3, 'abe')
+       ON CONFLICT (organization_id, email) DO UPDATE
+         SET display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), actors.display_name)
+       RETURNING id, email, display_name`,
+      [organization.rows[0].id, body.email, body.display_name ?? body.email.split('@')[0]],
+    );
+
+    const rawKey = randomBytes(24).toString('hex');
+    const created = await client.query(
+      `INSERT INTO api_keys (actor_id, key_hash, label)
+       VALUES ($1, $2, $3)
+       RETURNING id, created_at`,
+      [actorResult.rows[0].id, hashApiKey(rawKey), body.label ?? actorResult.rows[0].display_name],
+    );
+
+    return {
+      id: created.rows[0].id,
+      api_key: rawKey,
+      email: actorResult.rows[0].email,
+      display_name: actorResult.rows[0].display_name,
+      organization_slug: organizationSlug,
+      created_at: created.rows[0].created_at,
+      note: 'Guarde esta chave agora — ela não pode ser recuperada depois.',
+    };
+  });
+}
+
+async function listApiKeys() {
+  const result = await query(
+    `SELECT k.id, a.email, a.display_name, k.label, k.created_at, k.revoked_at
+       FROM api_keys k
+       JOIN actors a ON a.id = k.actor_id
+      ORDER BY k.created_at DESC`,
+  );
+  return result.rows;
+}
+
+async function revokeApiKey(id) {
+  const result = await query(
+    `UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING id, revoked_at`,
+    [id],
+  );
+  if (!result.rowCount) throw new HttpError(404, 'Chave não encontrada ou já revogada');
   return result.rows[0];
 }
 
@@ -504,10 +618,26 @@ async function route(request, response) {
     return response.end(html);
   }
 
-  if (!apiKeyMatches(request.headers['x-api-key'])) throw new HttpError(401, 'API key inválida');
+  const isAdmin = apiKeyMatches(request.headers['x-api-key']);
+  const actor = isAdmin ? null : await resolveActor(request.headers['x-api-key']);
+  if (!isAdmin && !actor) throw new HttpError(401, 'API key inválida');
+
+  if (request.method === 'POST' && pathname === '/api/v1/admin/api-keys') {
+    if (!isAdmin) throw new HttpError(403, 'Requer a chave administrativa');
+    return send(response, 201, await createApiKey(await readJson(request)));
+  }
+  if (request.method === 'GET' && pathname === '/api/v1/admin/api-keys') {
+    if (!isAdmin) throw new HttpError(403, 'Requer a chave administrativa');
+    return send(response, 200, { items: await listApiKeys() });
+  }
+  const revokeKeyPath = matchPath(pathname, /^\/api\/v1\/admin\/api-keys\/(?<id>[0-9a-f-]+)\/revoke$/i);
+  if (request.method === 'POST' && revokeKeyPath) {
+    if (!isAdmin) throw new HttpError(403, 'Requer a chave administrativa');
+    return send(response, 200, await revokeApiKey(revokeKeyPath.id));
+  }
 
   if (request.method === 'POST' && pathname === '/api/v1/executions/start') {
-    return send(response, 201, await startExecution(await readJson(request)));
+    return send(response, 201, await startExecution(await readJson(request), actor));
   }
   if (request.method === 'GET' && pathname === '/api/v1/executions') {
     return send(response, 200, await listExecutions(url));
@@ -519,7 +649,7 @@ async function route(request, response) {
     return send(response, 200, await evaluateAndStorePolicy(await readJson(request)));
   }
   if (request.method === 'POST' && pathname === '/api/v1/approvals') {
-    return send(response, 201, await createApproval(await readJson(request)));
+    return send(response, 201, await createApproval(await readJson(request), actor));
   }
   if (request.method === 'POST' && pathname === '/api/v1/integrations/pr') {
     return send(response, 201, await registerPullRequest(await readJson(request)));
