@@ -148,6 +148,25 @@
   }
   .event-label .primary { color: var(--text-primary); }
   .event-label .raw { color: var(--text-muted); font-size: 11px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .tab-btn {
+    background: none; border: none; cursor: pointer;
+    padding: 8px 12px; font-size: 13px; font-weight: 600;
+    color: var(--text-secondary); border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--text-primary); }
+  .tab-btn.active { color: var(--series-1); border-bottom-color: var(--series-1); }
+  .tab-panel[hidden] { display: none; }
+
+  table.compact { table-layout: fixed; }
+  table.compact col.label { width: 46%; }
+  table.compact col.num { width: 27%; }
+  table.compact td, table.compact th { white-space: normal; overflow-wrap: anywhere; }
+
+  .baseline-tiles .tile { background: var(--page); }
+  .baseline-tiles .value { font-size: 20px; }
 </style>
 
 <div class="viz-root">
@@ -178,6 +197,14 @@
   </div>
 
   <div class="tiles" id="tiles"></div>
+
+  <div class="card" style="margin-bottom:24px">
+    <div class="h2-row">
+      <h2>Linha de base (médias gerais)</h2>
+      <span class="info-icon" id="baselineInfo">i</span>
+    </div>
+    <div class="tiles baseline-tiles" id="baselineTiles"></div>
+  </div>
 
   <div class="grid2">
     <div class="card">
@@ -214,29 +241,42 @@
       <h2>Consumo e custo (tokens)</h2>
       <span class="info-icon" id="usageInfo">i</span>
     </div>
+    <div class="avg-caption" id="usageAvgCaption"></div>
     <div id="usageNote"></div>
-    <div class="table-wrap" style="margin-bottom:14px">
-      <table id="usageActorTable"><thead><tr>
+
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" data-tab="usage-actor" type="button">Por ABE</button>
+      <button class="tab-btn" data-tab="usage-project" type="button">Por projeto</button>
+      <button class="tab-btn" data-tab="usage-org" type="button">Por organização</button>
+      <button class="tab-btn" data-tab="usage-workitem" type="button">Por User Story</button>
+    </div>
+
+    <div class="tab-panel" data-panel="usage-actor">
+      <div class="table-wrap"><table id="usageActorTable"><thead><tr>
         <th>ABE</th><th class="num">Input</th><th class="num">Output</th>
         <th class="num">Cache leitura</th><th class="num">Cache criação</th>
         <th class="num">Total tokens</th><th class="num">Custo (USD)</th>
-      </tr></thead><tbody></tbody></table>
+      </tr></thead><tbody></tbody></table></div>
     </div>
-    <div class="table-wrap" style="margin-bottom:14px">
-      <table id="usageProjectTable"><thead><tr>
+    <div class="tab-panel" data-panel="usage-project" hidden>
+      <div class="table-wrap"><table id="usageProjectTable" class="compact">
+        <colgroup><col class="label"><col class="num"><col class="num"></colgroup>
+        <thead><tr>
         <th>Projeto</th><th class="num">Total tokens</th><th class="num">Custo (USD)</th>
-      </tr></thead><tbody></tbody></table>
+      </tr></thead><tbody></tbody></table></div>
     </div>
-    <div class="table-wrap" style="margin-bottom:14px">
-      <table id="usageOrgTable"><thead><tr>
+    <div class="tab-panel" data-panel="usage-org" hidden>
+      <div class="table-wrap"><table id="usageOrgTable" class="compact">
+        <colgroup><col class="label"><col class="num"><col class="num"></colgroup>
+        <thead><tr>
         <th>Organização</th><th class="num">Total tokens</th><th class="num">Custo (USD)</th>
-      </tr></thead><tbody></tbody></table>
+      </tr></thead><tbody></tbody></table></div>
     </div>
-    <div class="table-wrap">
-      <table id="usageWorkItemTable"><thead><tr>
+    <div class="tab-panel" data-panel="usage-workitem" hidden>
+      <div class="table-wrap"><table id="usageWorkItemTable"><thead><tr>
         <th>User Story</th><th>Projeto</th><th>ABE</th>
         <th class="num">Total tokens</th><th class="num">Custo (USD)</th>
-      </tr></thead><tbody></tbody></table>
+      </tr></thead><tbody></tbody></table></div>
     </div>
   </div>
 
@@ -399,6 +439,41 @@
     }
     const container = $('tiles');
     container.innerHTML = '';
+    for (const t of tiles) {
+      container.appendChild(el('div', { class: 'tile' }, [
+        el('div', { class: 'value' }, [String(t.value)]),
+        el('div', { class: 'label' }, [t.label]),
+      ]));
+    }
+  }
+
+  function renderBaseline(summary, usage) {
+    const container = $('baselineTiles');
+    container.innerHTML = '';
+    const tiles = [
+      { value: fmtDuration(summary.executions.avg_duration_seconds), label: 'Tempo médio por execução' },
+    ];
+
+    if (usage && usage.has_data && usage.by_work_item.length) {
+      const totalTokens = usage.by_work_item.reduce((s, r) => s + r.total_tokens, 0);
+      const totalCost = usage.by_work_item.reduce((s, r) => s + r.cost_usd, 0);
+      const n = usage.by_work_item.length;
+      tiles.push({ value: fmtTokens(Math.round(totalTokens / n)), label: 'Tokens médios por execução' });
+      tiles.push({ value: fmtCost(totalCost / n), label: 'Custo médio por execução' });
+    } else {
+      tiles.push({ value: '—', label: 'Tokens médios por execução (sem telemetria ainda)' });
+      tiles.push({ value: '—', label: 'Custo médio por execução (sem telemetria ainda)' });
+    }
+
+    const projectsCount = summary.inventory.projects || 0;
+    const deploysByEnv = {};
+    for (const row of summary.deployments) deploysByEnv[row.environment] = (deploysByEnv[row.environment] || 0) + row.count;
+    for (const envName of ['hml', 'prod']) {
+      const total = deploysByEnv[envName] || 0;
+      const label = envName === 'prod' ? 'Deploys médios por projeto (produção)' : 'Deploys médios por projeto (homologação)';
+      tiles.push({ value: projectsCount > 0 ? (total / projectsCount).toFixed(1) : '—', label });
+    }
+
     for (const t of tiles) {
       container.appendChild(el('div', { class: 'tile' }, [
         el('div', { class: 'value' }, [String(t.value)]),
@@ -730,6 +805,12 @@
         '(CLAUDE_CODE_ENABLE_TELEMETRY e as variáveis OTEL_*) precisa estar ativa no processo do Claude Code ' +
         'em cada máquina para os tokens e o custo chegarem até aqui.',
       ]));
+      $('usageAvgCaption').textContent = '';
+    } else {
+      const avgCostByActor = average(usage.by_actor, 'cost_usd');
+      $('usageAvgCaption').textContent = usage.by_actor.length > 1
+        ? 'Custo médio por ABE: ' + fmtCost(avgCostByActor) + '. Linhas com ⚠ estão 2× ou mais acima disso.'
+        : '';
     }
 
     const avgCost = average(usage.by_actor, 'cost_usd');
@@ -810,6 +891,7 @@
     populateSelect($('projectFilter'), projects.items, 'project_slug', 'project_name', projectSlug);
 
     renderTiles(summary, usage);
+    renderBaseline(summary, usage);
     renderPolicyChart(summary.policy_decisions);
     renderTimeseries(timeseries.items);
     renderDeploymentsChart(summary.deployments);
@@ -853,8 +935,26 @@
   $('projectFilter').addEventListener('change', () => loadAll().catch((err) => setStatus('erro: ' + err.message, 'err')));
   $('daysFilter').addEventListener('change', () => loadAll().catch((err) => setStatus('erro: ' + err.message, 'err')));
 
+  const BASELINE_EXPLANATION = `
+    Médias calculadas sobre tudo que está sendo exibido com os filtros atuais. Servem como
+    referência: as tabelas abaixo marcam com ⚠ qualquer ABE, projeto ou organização que fique
+    2× ou mais acima dessas médias (tempo de execução, custo por ABE...).
+  `;
   hoverable($('policyInfo'), POLICY_EXPLANATION, { wide: true, cursor: 'help' });
   hoverable($('usageInfo'), USAGE_EXPLANATION, { wide: true, cursor: 'help' });
+  hoverable($('baselineInfo'), BASELINE_EXPLANATION, { wide: true, cursor: 'help' });
+
+  document.querySelectorAll('.tabs').forEach((tabs) => {
+    tabs.addEventListener('click', (evt) => {
+      const btn = evt.target.closest('.tab-btn');
+      if (!btn) return;
+      const group = tabs.parentElement;
+      tabs.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      group.querySelectorAll('.tab-panel').forEach((panel) => {
+        panel.hidden = panel.dataset.panel !== btn.dataset.tab;
+      });
+    });
+  });
 
   loadSavedConn();
   if ($('apiKey').value) $('connectBtn').click();
