@@ -257,3 +257,147 @@ export async function getTimeseries({ projectSlug, days = 30 } = {}) {
     done: toNumber(row.done),
   }));
 }
+
+const USAGE_METRIC_NAMES = ['claude_code.token.usage', 'claude_code.cost.usage'];
+const TOKEN_TYPE_FIELD = {
+  input: 'input_tokens',
+  output: 'output_tokens',
+  cacheRead: 'cache_read_tokens',
+  cacheCreation: 'cache_creation_tokens',
+};
+
+async function reducedUsageRows({ organizationSlug, projectSlug } = {}) {
+  const result = await query(
+    `
+    SELECT
+      om.name, om.value, om.temporality, om.attributes,
+      e.id AS execution_id,
+      a.email AS abe_email, a.display_name,
+      wi.id AS work_item_id, wi.external_ref, wi.title AS work_item_title,
+      p.slug AS project_slug, p.name AS project_name,
+      o.slug AS organization_slug, o.name AS organization_name
+    FROM otel_measurements om
+    JOIN (
+      SELECT DISTINCT ON (claude_session_id) claude_session_id, execution_id
+        FROM agent_sessions
+       ORDER BY claude_session_id, started_at DESC
+    ) sem ON sem.claude_session_id = om.session_id
+    JOIN executions e ON e.id = sem.execution_id
+    JOIN actors a ON a.id = e.abe_id
+    JOIN work_items wi ON wi.id = e.work_item_id
+    JOIN repositories r ON r.id = e.repository_id
+    JOIN projects p ON p.id = r.project_id
+    JOIN organizations o ON o.id = p.organization_id
+    WHERE om.name = ANY($1::text[])
+      AND ($2::text IS NULL OR o.slug = $2)
+      AND ($3::text IS NULL OR p.slug = $3)
+    `,
+    [USAGE_METRIC_NAMES, organizationSlug || null, projectSlug || null],
+  );
+
+  // Cada session.id pode ter várias linhas brutas (uma por coleta OTLP). Reduz para um único
+  // valor por (execução, métrica, modelo, tipo) respeitando a temporalidade: DELTA soma,
+  // CUMULATIVE fica com o maior valor observado — mesma regra usada em otel.mjs.
+  const perExecution = new Map();
+  for (const row of result.rows) {
+    const model = row.attributes?.model ?? 'desconhecido';
+    const type = row.attributes?.type ?? null;
+    const key = [row.execution_id, row.name, model, type].join('|');
+    const value = Number(row.value ?? 0);
+    const existing = perExecution.get(key);
+    if (!existing) {
+      perExecution.set(key, { ...row, model, type, value });
+    } else if (Number(row.temporality) === 1) {
+      existing.value += value;
+    } else {
+      existing.value = Math.max(existing.value, value);
+    }
+  }
+  return [...perExecution.values()];
+}
+
+function emptyUsageBucket() {
+  return {
+    input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0,
+    cost_usd: 0, executions: new Set(),
+  };
+}
+
+function addUsageRow(bucket, row) {
+  if (row.name === 'claude_code.token.usage') {
+    const field = TOKEN_TYPE_FIELD[row.type];
+    if (field) bucket[field] += row.value;
+  } else if (row.name === 'claude_code.cost.usage') {
+    bucket.cost_usd += row.value;
+  }
+  bucket.executions.add(row.execution_id);
+}
+
+function finalizeUsageBucket(bucket, extra) {
+  const total_tokens = bucket.input_tokens + bucket.output_tokens + bucket.cache_read_tokens + bucket.cache_creation_tokens;
+  return {
+    ...extra,
+    input_tokens: Math.round(bucket.input_tokens),
+    output_tokens: Math.round(bucket.output_tokens),
+    cache_read_tokens: Math.round(bucket.cache_read_tokens),
+    cache_creation_tokens: Math.round(bucket.cache_creation_tokens),
+    total_tokens: Math.round(total_tokens),
+    cost_usd: Math.round(bucket.cost_usd * 1e6) / 1e6,
+    executions_with_usage: bucket.executions.size,
+  };
+}
+
+function rollupUsage(rows, keyFn, extraFn) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = keyFn(row);
+    if (key === null || key === undefined) continue;
+    if (!groups.has(key)) groups.set(key, { bucket: emptyUsageBucket(), extra: extraFn(row) });
+    addUsageRow(groups.get(key).bucket, row);
+  }
+  return [...groups.values()]
+    .map(({ bucket, extra }) => finalizeUsageBucket(bucket, extra))
+    .sort((a, b) => b.cost_usd - a.cost_usd);
+}
+
+export async function getUsage({ organizationSlug, projectSlug } = {}) {
+  const rows = await reducedUsageRows({ organizationSlug, projectSlug });
+
+  const byActor = rollupUsage(
+    rows,
+    (row) => row.abe_email,
+    (row) => ({ abe_email: row.abe_email, display_name: row.display_name, organization_slug: row.organization_slug }),
+  );
+  const byProject = rollupUsage(
+    rows,
+    (row) => `${row.organization_slug}/${row.project_slug}`,
+    (row) => ({ organization_slug: row.organization_slug, project_slug: row.project_slug, project_name: row.project_name }),
+  );
+  const byOrganization = rollupUsage(
+    rows,
+    (row) => row.organization_slug,
+    (row) => ({ organization_slug: row.organization_slug, organization_name: row.organization_name }),
+  );
+  const byWorkItem = rollupUsage(
+    rows,
+    (row) => row.work_item_id,
+    (row) => ({
+      external_ref: row.external_ref,
+      title: row.work_item_title,
+      project_slug: row.project_slug,
+      abe_email: row.abe_email,
+    }),
+  );
+
+  const totalCost = rows.reduce((sum, row) => sum + (row.name === 'claude_code.cost.usage' ? row.value : 0), 0);
+  const hasData = rows.length > 0;
+
+  return {
+    has_data: hasData,
+    total_cost_usd: Math.round(totalCost * 1e6) / 1e6,
+    by_actor: byActor,
+    by_project: byProject,
+    by_organization: byOrganization,
+    by_work_item: byWorkItem,
+  };
+}

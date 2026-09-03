@@ -128,8 +128,26 @@
     position: fixed; z-index: 50; pointer-events: none;
     background: var(--text-primary); color: var(--surface-1);
     font-size: 12px; line-height: 1.4; padding: 6px 9px; border-radius: 6px;
-    box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 220px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 260px;
   }
+  .viz-tooltip.wide { max-width: 340px; }
+
+  .h2-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .h2-row h2 { margin: 0; }
+  .info-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%;
+    background: var(--grid); color: var(--text-secondary);
+    font-size: 10px; font-weight: 700; font-style: normal; cursor: help;
+    user-select: none;
+  }
+  .avg-caption { font-size: 12px; color: var(--text-muted); margin: -8px 0 12px; }
+  .outlier-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-left: 5px; color: var(--status-warning); cursor: help; font-size: 12px;
+  }
+  .event-label .primary { color: var(--text-primary); }
+  .event-label .raw { color: var(--text-muted); font-size: 11px; }
 </style>
 
 <div class="viz-root">
@@ -163,7 +181,10 @@
 
   <div class="grid2">
     <div class="card">
-      <h2>Decisões da Policy Engine</h2>
+      <div class="h2-row">
+        <h2>Decisões da Policy Engine</h2>
+        <span class="info-icon" id="policyInfo">i</span>
+      </div>
       <div id="policyChart"><div class="empty">Conecte para carregar os dados.</div></div>
     </div>
     <div class="card">
@@ -189,7 +210,39 @@
   </div>
 
   <div class="card" style="margin-bottom:16px">
+    <div class="h2-row">
+      <h2>Consumo e custo (tokens)</h2>
+      <span class="info-icon" id="usageInfo">i</span>
+    </div>
+    <div id="usageNote"></div>
+    <div class="table-wrap" style="margin-bottom:14px">
+      <table id="usageActorTable"><thead><tr>
+        <th>ABE</th><th class="num">Input</th><th class="num">Output</th>
+        <th class="num">Cache leitura</th><th class="num">Cache criação</th>
+        <th class="num">Total tokens</th><th class="num">Custo (USD)</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="table-wrap" style="margin-bottom:14px">
+      <table id="usageProjectTable"><thead><tr>
+        <th>Projeto</th><th class="num">Total tokens</th><th class="num">Custo (USD)</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="table-wrap" style="margin-bottom:14px">
+      <table id="usageOrgTable"><thead><tr>
+        <th>Organização</th><th class="num">Total tokens</th><th class="num">Custo (USD)</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="table-wrap">
+      <table id="usageWorkItemTable"><thead><tr>
+        <th>User Story</th><th>Projeto</th><th>ABE</th>
+        <th class="num">Total tokens</th><th class="num">Custo (USD)</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
     <h2>Por organização</h2>
+    <div class="avg-caption" id="orgAvgCaption"></div>
     <div class="table-wrap"><table id="orgTable"><thead><tr>
       <th>Organização</th><th class="num">Projetos</th><th class="num">Execuções</th>
       <th class="num">Concluídas</th><th class="num">Bloqueadas</th><th class="num">Tempo médio</th><th>Última execução</th>
@@ -198,6 +251,7 @@
 
   <div class="card" style="margin-bottom:16px">
     <h2>Por projeto</h2>
+    <div class="avg-caption" id="projectAvgCaption"></div>
     <div class="table-wrap"><table id="projectTable"><thead><tr>
       <th>Organização</th><th>Projeto</th><th class="num">US concluídas</th>
       <th class="num">Execuções</th><th class="num">Concluídas</th><th class="num">Bloqueadas</th>
@@ -207,6 +261,7 @@
 
   <div class="card">
     <h2>Por ABE (ator)</h2>
+    <div class="avg-caption" id="actorAvgCaption"></div>
     <div class="table-wrap"><table id="actorTable"><thead><tr>
       <th>ABE</th><th>Organização</th><th class="num">Execuções</th>
       <th class="num">Concluídas</th><th class="num">Aprovações</th><th class="num">Tempo médio</th><th>Última execução</th>
@@ -280,10 +335,11 @@
     tooltip.style.top = y + 'px';
   }
 
-  function hoverable(node, html) {
-    node.style.cursor = 'pointer';
+  function hoverable(node, html, opts) {
+    node.style.cursor = (opts && opts.cursor) || 'pointer';
     node.addEventListener('mouseenter', (evt) => {
       tooltip.innerHTML = html;
+      tooltip.className = 'viz-tooltip' + ((opts && opts.wide) ? ' wide' : '');
       tooltip.hidden = false;
       positionTooltip(evt);
     });
@@ -291,6 +347,32 @@
     node.addEventListener('mouseleave', () => { tooltip.hidden = true; });
     return node;
   }
+
+  const POLICY_EXPLANATION = `
+    <strong>O que é</strong><br>
+    Antes de cada prompt e de cada uso de ferramenta (Bash, Edit, Write...), a Policy Engine do
+    Control Plane analisa o texto em busca de padrões de risco. Isso roda dentro da execução Lynse,
+    não substitui o julgamento do ABE.<br><br>
+    <strong>O que ela verifica</strong><br>
+    • <strong>SEC-SECRET-01</strong> — credencial ou chave privada no texto → bloqueia<br>
+    • <strong>SEC-DB-04</strong> — DROP/TRUNCATE em banco → bloqueia<br>
+    • <strong>SEC-FS-03</strong> — remoção recursiva de arquivos (rm -rf) → bloqueia<br>
+    • <strong>ENG-GIT-02</strong> — reset --hard, push --force, git clean -f → pede confirmação<br>
+    • <strong>OPS-PROD-01</strong> — ação de deploy/infra em produção → pede confirmação<br>
+    • <strong>SEC-CONFIG-02</strong> — edição de .env/credentials/secrets → pede confirmação<br><br>
+    <strong>Permitir x bloquear</strong><br>
+    Em modo <strong>audit</strong> (o padrão hoje), nada é bloqueado de verdade — a decisão que
+    <em>teria</em> sido tomada fica registrada como "Teria bloqueado"/"Confirmação", só para
+    observação. Em modo <strong>enforcement</strong>, a ação é realmente barrada antes de rodar.
+  `;
+
+  const USAGE_EXPLANATION = `
+    Tokens e custo em USD vêm direto da telemetria nativa do Claude Code
+    (métricas <code>claude_code.token.usage</code> e <code>claude_code.cost.usage</code>).
+    Cada sessão é atribuída à execução Lynse mais recente daquela sessão — se uma sessão cobrir
+    mais de uma User Story, o consumo fica todo na última, uma aproximação até termos um sinal
+    mais fino por execução.
+  `;
 
   const SVG_TAGS = new Set(['svg', 'g', 'rect', 'line', 'circle', 'path', 'text']);
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -302,7 +384,7 @@
     return node;
   }
 
-  function renderTiles(summary) {
+  function renderTiles(summary, usage) {
     const ex = summary.executions, inv = summary.inventory;
     const tiles = [
       { value: ex.total, label: 'Execuções totais' },
@@ -312,6 +394,9 @@
       { value: fmtDuration(ex.avg_duration_seconds), label: 'Tempo médio de execução' },
       { value: inv.work_items_done + ' / ' + inv.work_items_total, label: 'User Stories concluídas' },
     ];
+    if (usage && usage.has_data) {
+      tiles.push({ value: fmtCost(usage.total_cost_usd), label: 'Custo total (tokens)' });
+    }
     const container = $('tiles');
     container.innerHTML = '';
     for (const t of tiles) {
@@ -454,6 +539,40 @@
     }
   }
 
+  const EVENT_TYPE_LABEL = {
+    SessionStart: 'Sessão iniciada',
+    UserPromptSubmit: 'Prompt do usuário',
+    UserPromptExpansion: 'Prompt expandido',
+    PreToolUse: 'Pré-ferramenta',
+    PostToolUse: 'Pós-ferramenta',
+    PostToolUseFailure: 'Falha de ferramenta',
+    InstructionsLoaded: 'Instruções carregadas',
+    SubagentStart: 'Subagente iniciado',
+    SubagentStop: 'Subagente encerrado',
+    TaskCreated: 'Tarefa criada',
+    TaskCompleted: 'Tarefa concluída',
+    Stop: 'Resposta concluída',
+    SessionEnd: 'Sessão encerrada',
+    Unknown: 'Evento desconhecido',
+  };
+
+  const EVENT_TYPE_EXPLANATION = {
+    SessionStart: 'Disparado quando uma sessão do Claude Code começa.',
+    UserPromptSubmit: 'Disparado a cada mensagem que o usuário envia no chat.',
+    UserPromptExpansion: 'Disparado quando o prompt é expandido com contexto adicional antes de ir ao modelo.',
+    PreToolUse: 'Disparado antes de executar uma ferramenta (Bash, Edit, Write...) — é aqui que a Policy Engine pode bloquear ou pedir confirmação.',
+    PostToolUse: 'Disparado depois que uma ferramenta terminou de rodar, com o resultado e o diff (se houver).',
+    PostToolUseFailure: 'Disparado quando uma ferramenta falha ao executar.',
+    InstructionsLoaded: 'Disparado quando instruções de projeto (CLAUDE.md etc.) são carregadas na sessão.',
+    SubagentStart: 'Disparado quando um subagente é iniciado dentro da sessão.',
+    SubagentStop: 'Disparado quando um subagente termina.',
+    TaskCreated: 'Disparado quando o agente cria uma tarefa interna de acompanhamento.',
+    TaskCompleted: 'Disparado quando uma tarefa interna é concluída.',
+    Stop: 'Disparado quando o agente termina de responder.',
+    SessionEnd: 'Disparado quando a sessão do Claude Code é encerrada.',
+    Unknown: 'Evento recebido sem um tipo reconhecido.',
+  };
+
   function renderEventsChart(rows) {
     const target = $('eventsChart');
     target.innerHTML = '';
@@ -461,18 +580,24 @@
 
     const top = rows.slice(0, 8);
     const max = Math.max(...top.map((r) => r.count), 1);
-    const width = 420, rowH = 28, height = top.length * rowH + 10;
+    const width = 440, rowH = 30, height = top.length * rowH + 10;
     const svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: '100%', height, role: 'img' }, []);
-    const barMax = width - 150;
+    const labelColW = 130;
+    const barMax = width - labelColW - 40;
 
     top.forEach((r, i) => {
-      const y = i * rowH + 6;
+      const y = i * rowH + 7;
       const w = Math.max(4, (r.count / max) * barMax);
-      svg.appendChild(el('text', { x: 0, y: y + 13, class: 'bar-label' }, [r.event_type]));
-      const bar = el('rect', { x: 140, y, width: w, height: 14, rx: 4, ry: 4, fill: 'var(--series-1)', 'aria-label': r.event_type + ': ' + r.count }, []);
-      hoverable(bar, r.event_type + '<br><strong>' + r.count + '</strong> eventos');
+      const label = EVENT_TYPE_LABEL[r.event_type] || r.event_type;
+      const explanation = EVENT_TYPE_EXPLANATION[r.event_type] || 'Nome de evento não mapeado ainda.';
+      const tooltipHtml = '<strong>' + label + '</strong> (<code>' + r.event_type + '</code>)<br>' + explanation;
+      const labelNode = el('text', { x: 0, y: y + 13, class: 'bar-label' }, [label]);
+      hoverable(labelNode, tooltipHtml, { wide: true });
+      svg.appendChild(labelNode);
+      const bar = el('rect', { x: labelColW, y, width: w, height: 14, rx: 4, ry: 4, fill: 'var(--series-1)', 'aria-label': label + ': ' + r.count }, []);
+      hoverable(bar, tooltipHtml + '<br><strong>' + r.count + '</strong> eventos', { wide: true });
       svg.appendChild(bar);
-      svg.appendChild(el('text', { x: 140 + w + 8, y: y + 13, class: 'bar-label' }, [String(r.count)]));
+      svg.appendChild(el('text', { x: labelColW + w + 8, y: y + 13, class: 'bar-label' }, [String(r.count)]));
     });
     target.appendChild(svg);
   }
@@ -495,16 +620,45 @@
     for (const row of rows) tbody.appendChild(rowFn(row));
   }
 
+  function average(rows, field) {
+    const values = rows.map((r) => r[field]).filter((v) => typeof v === 'number' && Number.isFinite(v) && v > 0);
+    if (!values.length) return null;
+    return values.reduce((s, v) => s + v, 0) / values.length;
+  }
+
+  function outlierBadge(value, avg, fmt) {
+    if (avg === null || typeof value !== 'number' || value <= 0 || avg <= 0) return null;
+    const ratio = value / avg;
+    if (ratio < 2) return null;
+    const badge = el('span', { class: 'outlier-badge', 'aria-label': 'acima da média' }, ['⚠']);
+    hoverable(badge, ratio.toFixed(1) + '&times; acima da média do grupo (' + fmt(avg) + ')');
+    return badge;
+  }
+
+  function durationCell(value, avg) {
+    const td = el('td', { class: 'num' }, [fmtDuration(value)]);
+    const badge = outlierBadge(value, avg, fmtDuration);
+    if (badge) td.appendChild(badge);
+    return td;
+  }
+
   function renderOrgTable(rows) {
-    renderTable('orgTable', rows, (r) => el('tr', {}, [
-      el('td', {}, [r.organization_name]),
-      el('td', { class: 'num' }, [String(r.projects_count)]),
-      el('td', { class: 'num' }, [String(r.total_executions)]),
-      el('td', { class: 'num' }, [String(r.done_executions)]),
-      el('td', { class: 'num' }, [String(r.blocked_executions)]),
-      el('td', { class: 'num' }, [fmtDuration(r.avg_duration_seconds)]),
-      el('td', {}, [fmtDate(r.last_execution_at)]),
-    ]), 'Nenhuma organização encontrada.');
+    const avg = average(rows, 'avg_duration_seconds');
+    $('orgAvgCaption').textContent = avg !== null
+      ? 'Média de tempo de execução entre organizações: ' + fmtDuration(avg) + '. Linhas com ⚠ estão 2× ou mais acima disso.'
+      : '';
+    renderTable('orgTable', rows, (r) => {
+      const tr = el('tr', {}, [
+        el('td', {}, [r.organization_name]),
+        el('td', { class: 'num' }, [String(r.projects_count)]),
+        el('td', { class: 'num' }, [String(r.total_executions)]),
+        el('td', { class: 'num' }, [String(r.done_executions)]),
+        el('td', { class: 'num' }, [String(r.blocked_executions)]),
+      ]);
+      tr.appendChild(durationCell(r.avg_duration_seconds, avg));
+      tr.appendChild(el('td', {}, [fmtDate(r.last_execution_at)]));
+      return tr;
+    }, 'Nenhuma organização encontrada.');
   }
 
   function orgName(slug) {
@@ -512,6 +666,10 @@
   }
 
   function renderProjectTable(rows) {
+    const avg = average(rows, 'avg_duration_seconds');
+    $('projectAvgCaption').textContent = avg !== null
+      ? 'Média de tempo de execução entre projetos: ' + fmtDuration(avg) + '. Linhas com ⚠ estão 2× ou mais acima disso.'
+      : '';
     renderTable('projectTable', rows, (r) => {
       const tr = el('tr', {}, [
         el('td', {}, [orgName(r.organization_slug)]),
@@ -521,22 +679,102 @@
       tr.appendChild(el('td', { class: 'num' }, [String(r.total_executions)]));
       tr.appendChild(el('td', { class: 'num' }, [String(r.done_executions)]));
       tr.appendChild(el('td', { class: 'num' }, [String(r.blocked_executions)]));
-      tr.appendChild(el('td', { class: 'num' }, [fmtDuration(r.avg_duration_seconds)]));
+      tr.appendChild(durationCell(r.avg_duration_seconds, avg));
       tr.appendChild(el('td', {}, [fmtDate(r.last_execution_at)]));
       return tr;
     }, 'Nenhum projeto encontrado.');
   }
 
   function renderActorTable(rows) {
-    renderTable('actorTable', rows, (r) => el('tr', {}, [
-      el('td', {}, [r.display_name + ' (' + r.abe_email + ')']),
-      el('td', {}, [orgName(r.organization_slug)]),
-      el('td', { class: 'num' }, [String(r.total_executions)]),
-      el('td', { class: 'num' }, [String(r.done_executions)]),
-      el('td', { class: 'num' }, [String(r.approvals_count)]),
-      el('td', { class: 'num' }, [fmtDuration(r.avg_duration_seconds)]),
-      el('td', {}, [fmtDate(r.last_execution_at)]),
-    ]), 'Nenhum ABE com atividade nesse filtro.');
+    const avg = average(rows, 'avg_duration_seconds');
+    $('actorAvgCaption').textContent = avg !== null
+      ? 'Média de tempo de execução entre ABEs: ' + fmtDuration(avg) + '. Linhas com ⚠ estão 2× ou mais acima disso — ex.: se a média geral é 3m, um ABE levando 4h aparece marcado aqui.'
+      : '';
+    renderTable('actorTable', rows, (r) => {
+      const tr = el('tr', {}, [
+        el('td', {}, [r.display_name + ' (' + r.abe_email + ')']),
+        el('td', {}, [orgName(r.organization_slug)]),
+        el('td', { class: 'num' }, [String(r.total_executions)]),
+        el('td', { class: 'num' }, [String(r.done_executions)]),
+        el('td', { class: 'num' }, [String(r.approvals_count)]),
+      ]);
+      tr.appendChild(durationCell(r.avg_duration_seconds, avg));
+      tr.appendChild(el('td', {}, [fmtDate(r.last_execution_at)]));
+      return tr;
+    }, 'Nenhum ABE com atividade nesse filtro.');
+  }
+
+  function fmtCost(usd) {
+    if (usd === null || usd === undefined) return '—';
+    return '$' + usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  }
+
+  function fmtTokens(n) {
+    if (n === null || n === undefined) return '—';
+    return n.toLocaleString('pt-BR');
+  }
+
+  function costCell(value, avg) {
+    const td = el('td', { class: 'num' }, [fmtCost(value)]);
+    const badge = outlierBadge(value, avg, fmtCost);
+    if (badge) td.appendChild(badge);
+    return td;
+  }
+
+  function renderUsage(usage) {
+    const note = $('usageNote');
+    note.innerHTML = '';
+    if (!usage.has_data) {
+      note.appendChild(el('div', { class: 'empty' }, [
+        'Nenhum dado de telemetria recebido ainda. Isso não é falta de uso — a telemetria do Claude Code ' +
+        '(CLAUDE_CODE_ENABLE_TELEMETRY e as variáveis OTEL_*) precisa estar ativa no processo do Claude Code ' +
+        'em cada máquina para os tokens e o custo chegarem até aqui.',
+      ]));
+    }
+
+    const avgCost = average(usage.by_actor, 'cost_usd');
+
+    renderTable('usageActorTable', usage.by_actor, (r) => {
+      const tr = el('tr', {}, [
+        el('td', {}, [(r.display_name || r.abe_email) + ' (' + r.abe_email + ')']),
+        el('td', { class: 'num' }, [fmtTokens(r.input_tokens)]),
+        el('td', { class: 'num' }, [fmtTokens(r.output_tokens)]),
+        el('td', { class: 'num' }, [fmtTokens(r.cache_read_tokens)]),
+        el('td', { class: 'num' }, [fmtTokens(r.cache_creation_tokens)]),
+        el('td', { class: 'num' }, [fmtTokens(r.total_tokens)]),
+      ]);
+      tr.appendChild(costCell(r.cost_usd, avgCost));
+      return tr;
+    }, 'Sem dados de consumo por ABE ainda.');
+
+    renderTable('usageProjectTable', usage.by_project, (r) => {
+      const tr = el('tr', {}, [
+        el('td', {}, [r.project_name || r.project_slug]),
+        el('td', { class: 'num' }, [fmtTokens(r.total_tokens)]),
+      ]);
+      tr.appendChild(costCell(r.cost_usd, average(usage.by_project, 'cost_usd')));
+      return tr;
+    }, 'Sem dados de consumo por projeto ainda.');
+
+    renderTable('usageOrgTable', usage.by_organization, (r) => {
+      const tr = el('tr', {}, [
+        el('td', {}, [r.organization_name || r.organization_slug]),
+        el('td', { class: 'num' }, [fmtTokens(r.total_tokens)]),
+      ]);
+      tr.appendChild(costCell(r.cost_usd, average(usage.by_organization, 'cost_usd')));
+      return tr;
+    }, 'Sem dados de consumo por organização ainda.');
+
+    renderTable('usageWorkItemTable', usage.by_work_item.slice(0, 15), (r) => {
+      const tr = el('tr', {}, [
+        el('td', {}, [r.external_ref + (r.title && r.title !== r.external_ref ? ' — ' + r.title : '')]),
+        el('td', {}, [r.project_slug]),
+        el('td', {}, [r.abe_email]),
+        el('td', { class: 'num' }, [fmtTokens(r.total_tokens)]),
+      ]);
+      tr.appendChild(costCell(r.cost_usd, average(usage.by_work_item, 'cost_usd')));
+      return tr;
+    }, 'Sem dados de consumo por User Story ainda.');
   }
 
   function populateSelect(select, items, valueKey, labelKey, currentValue) {
@@ -556,12 +794,13 @@
 
     setStatus('carregando…', '');
 
-    const [summary, orgs, projects, actors, timeseries] = await Promise.all([
+    const [summary, orgs, projects, actors, timeseries, usage] = await Promise.all([
       api('/api/v1/analytics/summary'),
       api('/api/v1/analytics/organizations'),
       api('/api/v1/analytics/projects' + (orgSlug ? '?organization_slug=' + encodeURIComponent(orgSlug) : '')),
       api('/api/v1/analytics/actors' + buildQuery({ organization_slug: orgSlug, project_slug: projectSlug })),
       api('/api/v1/analytics/timeseries' + buildQuery({ project_slug: projectSlug, days })),
+      api('/api/v1/analytics/usage' + buildQuery({ organization_slug: orgSlug, project_slug: projectSlug })),
     ]);
 
     state.organizations = orgs.items;
@@ -570,11 +809,12 @@
     populateSelect($('orgFilter'), orgs.items, 'organization_slug', 'organization_name', orgSlug);
     populateSelect($('projectFilter'), projects.items, 'project_slug', 'project_name', projectSlug);
 
-    renderTiles(summary);
+    renderTiles(summary, usage);
     renderPolicyChart(summary.policy_decisions);
     renderTimeseries(timeseries.items);
     renderDeploymentsChart(summary.deployments);
     renderEventsChart(summary.events_by_type);
+    renderUsage(usage);
     renderOrgTable(orgs.items);
     renderProjectTable(projects.items);
     renderActorTable(actors.items);
@@ -612,6 +852,9 @@
   });
   $('projectFilter').addEventListener('change', () => loadAll().catch((err) => setStatus('erro: ' + err.message, 'err')));
   $('daysFilter').addEventListener('change', () => loadAll().catch((err) => setStatus('erro: ' + err.message, 'err')));
+
+  hoverable($('policyInfo'), POLICY_EXPLANATION, { wide: true, cursor: 'help' });
+  hoverable($('usageInfo'), USAGE_EXPLANATION, { wide: true, cursor: 'help' });
 
   loadSavedConn();
   if ($('apiKey').value) $('connectBtn').click();

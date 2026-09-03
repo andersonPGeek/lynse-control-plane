@@ -13,6 +13,7 @@ import {
   getByProject,
   getSummary as getAnalyticsSummary,
   getTimeseries,
+  getUsage,
 } from './analytics.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -689,6 +690,13 @@ async function route(request, response) {
       days: Number.parseInt(url.searchParams.get('days') ?? '30', 10),
     });
     return send(response, 200, { items });
+  }
+  if (request.method === 'GET' && pathname === '/api/v1/analytics/usage') {
+    const usage = await getUsage({
+      organizationSlug: url.searchParams.get('organization_slug'),
+      projectSlug: url.searchParams.get('project_slug'),
+    });
+    return send(response, 200, usage);
   }
 
   const statusPath = matchPath(pathname, /^\/api\/v1\/executions\/(?<id>[0-9a-f-]+)\/status$/i);
