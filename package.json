@@ -1,0 +1,22 @@
+{
+  "name": "lynse-control-plane-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "POC da Operação Lynse: governança e telemetria de engenharia agêntica com Claude Code.",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/server.mjs",
+    "start": "node --env-file=.env src/server.mjs",
+    "migrate": "node --env-file=.env scripts/migrate.mjs",
+    "seed": "node --env-file=.env scripts/seed.mjs",
+    "db:setup": "npm run migrate && npm run seed",
+    "test": "node --test",
+    "check": "node --check src/server.mjs && node --check .claude/hooks/lynse-hook.mjs && node --check .claude/hooks/lynse-cli.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
+}

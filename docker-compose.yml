@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lynse_control_plane
+      POSTGRES_USER: lynse
+      POSTGRES_PASSWORD: lynse
+    ports:
+      - "5432:5432"
+    volumes:
+      - lynse_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lynse -d lynse_control_plane"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  control-plane:
+    build: .
+    environment:
+      PORT: 3333
+      DATABASE_URL: postgres://lynse:lynse@postgres:5432/lynse_control_plane
+      LYNSE_API_KEY: change-me-local
+      LYNSE_DEFAULT_MODE: audit
+      LYNSE_FAIL_MODE: open
+    ports:
+      - "3333:3333"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-c", "npm run migrate && npm run seed && npm start"]
+
+volumes:
+  lynse_pg_data:

@@ -1,0 +1,193 @@
+openapi: 3.1.0
+info:
+  title: Lynse Control Plane POC
+  version: 0.1.0
+  description: API de governança e telemetria da Operação Lynse.
+servers:
+  - url: http://localhost:3333
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+  schemas:
+    StartExecution:
+      type: object
+      required: [external_ref, project_slug, repository_slug, abe_email]
+      properties:
+        external_ref: { type: string, examples: [US-1842] }
+        title: { type: string }
+        description: { type: string }
+        acceptance_criteria: { type: array, items: { type: string } }
+        risk_level: { type: string, enum: [low, medium, high] }
+        project_slug: { type: string }
+        repository_slug: { type: string }
+        abe_email: { type: string, format: email }
+        claude_session_id: { type: string }
+        branch_name: { type: string }
+        mode: { type: string, enum: [audit, enforcement] }
+    Event:
+      type: object
+      required: [execution_id, event_type]
+      properties:
+        execution_id: { type: string, format: uuid }
+        claude_session_id: { type: string }
+        event_type: { type: string }
+        tool_name: { type: string }
+        idempotency_key: { type: string }
+        occurred_at: { type: string, format: date-time }
+        payload: { type: object, additionalProperties: true }
+    PolicyRequest:
+      type: object
+      required: [execution_id]
+      properties:
+        execution_id: { type: string, format: uuid }
+        claude_session_id: { type: string }
+        hook_event_name: { type: string }
+        tool_name: { type: string }
+        tool_input: { type: object, additionalProperties: true }
+        prompt: { type: string }
+        mode: { type: string, enum: [audit, enforcement] }
+    Approval:
+      type: object
+      required: [execution_id, abe_email, gate, decision]
+      properties:
+        execution_id: { type: string, format: uuid }
+        abe_email: { type: string, format: email }
+        gate: { type: string, enum: [plan, pr, deploy, rollback, close] }
+        decision: { type: string, enum: [approved, rejected, changes_requested] }
+        rationale: { type: string }
+    PullRequest:
+      type: object
+      required: [execution_id, external_id]
+      properties:
+        execution_id: { type: string, format: uuid }
+        provider: { type: string, default: github }
+        external_id: { type: string }
+        url: { type: string, format: uri }
+        status: { type: string }
+        merged_at: { type: string, format: date-time }
+        payload: { type: object, additionalProperties: true }
+    Deployment:
+      type: object
+      required: [execution_id, environment, status]
+      properties:
+        execution_id: { type: string, format: uuid }
+        environment: { type: string, enum: [dev, hml, prod] }
+        status: { type: string, enum: [started, succeeded, failed, rolled_back] }
+        version: { type: string }
+        url: { type: string, format: uri }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        payload: { type: object, additionalProperties: true }
+security:
+  - ApiKey: []
+paths:
+  /health:
+    get:
+      security: []
+      responses:
+        "200": { description: Serviço e banco saudáveis }
+  /api/v1/executions/start:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartExecution" }
+      responses:
+        "201": { description: Execução criada ou reutilizada }
+  /api/v1/executions:
+    get:
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: Lista de execuções }
+  /api/v1/events:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Event" }
+      responses:
+        "202": { description: Evento aceito }
+  /api/v1/policies/evaluate:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PolicyRequest" }
+      responses:
+        "200": { description: Decisão ALLOW, ASK ou BLOCK }
+  /api/v1/approvals:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Approval" }
+      responses:
+        "201": { description: Gate registrado }
+  /api/v1/executions/{id}:
+    get:
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Execução detalhada }
+  /api/v1/executions/{id}/summary:
+    get:
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Resumo consolidado }
+  /api/v1/executions/{id}/status:
+    patch:
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [briefing, planning, building, verifying, release, observing, done, blocked, cancelled] }
+      responses:
+        "200": { description: Etapa atualizada }
+  /api/v1/executions/{id}/complete:
+    post:
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Execução encerrada }
+  /api/v1/integrations/pr:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PullRequest" }
+      responses:
+        "201": { description: PR registrado ou atualizado }
+  /api/v1/integrations/deploy:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Deployment" }
+      responses:
+        "201": { description: Deploy registrado }
+  /otel/v1/metrics:
+    post:
+      responses:
+        "200": { description: Métricas OTLP JSON aceitas }
+  /otel/v1/logs:
+    post:
+      responses:
+        "200": { description: Logs OTLP JSON aceitos }
