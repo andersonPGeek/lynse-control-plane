@@ -1,0 +1,479 @@
+<title>Operação Lynse — Indicadores</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --card:           #ffffff;
+    --series-1:       #2a78d6;
+    --series-3:       #1baf7a;
+    --status-good:    #0ca30c;
+    --status-warning: #fab219;
+    --status-serious: #ec835a;
+    --status-critical:#d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --card:           #242422;
+      --series-1:       #3987e5;
+      --series-3:       #199e70;
+      --status-good:    #0ca30c;
+      --status-warning: #fab219;
+      --status-serious: #ec835a;
+      --status-critical:#d03b3b;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  .viz-root {
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px clamp(16px, 4vw, 40px) 60px;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 14px; color: var(--text-primary); }
+  .sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+
+  header.top {
+    display: flex; flex-wrap: wrap; gap: 16px 24px;
+    align-items: flex-end; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .conn {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .conn input {
+    background: var(--page); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; font-size: 13px; min-width: 160px;
+  }
+  .conn button {
+    background: var(--series-1); color: #fff; border: none;
+    border-radius: 6px; padding: 7px 14px; font-size: 13px;
+    cursor: pointer; font-weight: 600;
+  }
+  .conn button:hover { filter: brightness(1.08); }
+  #connStatus { font-size: 12px; color: var(--text-muted); }
+  #connStatus.err { color: var(--status-critical); }
+  #connStatus.ok { color: var(--status-good); }
+
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    margin-bottom: 20px;
+  }
+  .filters label { font-size: 12px; color: var(--text-secondary); margin-right: 4px; }
+  .filters select {
+    background: var(--card); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-size: 13px;
+  }
+
+  .tiles {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
+  .tile {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .tile .value {
+    font-size: 26px; font-weight: 700; font-variant-numeric: proportional-nums;
+  }
+  .tile .label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .grid2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
+  }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+  }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary); }
+  .legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ratio-bar { display: inline-block; width: 70px; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+  .ratio-bar > span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
+  .table-wrap { overflow-x: auto; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 12px 0; }
+
+  svg text { fill: var(--text-secondary); font-size: 11px; }
+  .bar-label { fill: var(--text-primary); font-size: 12px; }
+</style>
+
+<div class="viz-root">
+  <header class="top">
+    <div>
+      <h1>Operação Lynse — Indicadores</h1>
+      <div class="sub">User Stories, tempo de execução, política e deploys por organização / projeto / ABE.</div>
+    </div>
+    <div class="conn">
+      <input id="apiUrl" type="text" placeholder="URL da API" />
+      <input id="apiKey" type="password" placeholder="API key (x-api-key)" />
+      <button id="connectBtn">Conectar</button>
+      <span id="connStatus">não conectado</span>
+    </div>
+  </header>
+
+  <div class="filters">
+    <label for="orgFilter">Organização</label>
+    <select id="orgFilter"><option value="">Todas</option></select>
+    <label for="projectFilter">Projeto</label>
+    <select id="projectFilter"><option value="">Todos</option></select>
+    <label for="daysFilter">Período</label>
+    <select id="daysFilter">
+      <option value="7">7 dias</option>
+      <option value="30" selected>30 dias</option>
+      <option value="90">90 dias</option>
+    </select>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Decisões da Policy Engine</h2>
+      <div id="policyChart"><div class="empty">Conecte para carregar os dados.</div></div>
+    </div>
+    <div class="card">
+      <h2>Execuções por dia</h2>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--series-1)"></span>Iniciadas</span>
+        <span><span class="dot" style="background:var(--series-3)"></span>Concluídas</span>
+      </div>
+      <div id="timeseriesChart"><div class="empty">Conecte para carregar os dados.</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h2>Por organização</h2>
+    <div class="table-wrap"><table id="orgTable"><thead><tr>
+      <th>Organização</th><th class="num">Projetos</th><th class="num">Execuções</th>
+      <th class="num">Concluídas</th><th class="num">Bloqueadas</th><th class="num">Tempo médio</th><th>Última execução</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h2>Por projeto</h2>
+    <div class="table-wrap"><table id="projectTable"><thead><tr>
+      <th>Organização</th><th>Projeto</th><th class="num">US concluídas</th>
+      <th class="num">Execuções</th><th class="num">Concluídas</th><th class="num">Bloqueadas</th>
+      <th class="num">Tempo médio</th><th>Última execução</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Por ABE (ator)</h2>
+    <div class="table-wrap"><table id="actorTable"><thead><tr>
+      <th>ABE</th><th>Organização</th><th class="num">Execuções</th>
+      <th class="num">Concluídas</th><th class="num">Aprovações</th><th class="num">Tempo médio</th><th>Última execução</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const STORAGE_KEY = 'lynse_dashboard_conn';
+
+  const state = { apiUrl: '', apiKey: '', organizations: [], projects: [] };
+
+  function loadSavedConn() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      $('apiUrl').value = saved.apiUrl || window.location.origin;
+      $('apiKey').value = saved.apiKey || '';
+    } catch {
+      $('apiUrl').value = window.location.origin;
+    }
+  }
+
+  function saveConn() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiUrl: state.apiUrl, apiKey: state.apiKey }));
+    } catch { /* localStorage indisponível */ }
+  }
+
+  async function api(path) {
+    const res = await fetch(state.apiUrl + path, { headers: { 'x-api-key': state.apiKey } });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || ('HTTP ' + res.status));
+    }
+    return res.json();
+  }
+
+  function fmtDuration(seconds) {
+    if (seconds === null || seconds === undefined) return '—';
+    const s = Math.round(seconds);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ' + (s % 60) + 's';
+    const h = Math.floor(m / 60);
+    return h + 'h ' + (m % 60) + 'm';
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function el(tag, attrs, children) {
+    const node = document.createElementNS(tag === 'svg' || tag === 'g' || tag === 'rect' || tag === 'line' || tag === 'circle' || tag === 'path' || tag === 'text'
+      ? 'http://www.w3.org/2000/svg' : null, tag);
+    for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+    for (const child of children || []) node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+    return node;
+  }
+
+  function renderTiles(summary) {
+    const ex = summary.executions, inv = summary.inventory;
+    const tiles = [
+      { value: ex.total, label: 'Execuções totais' },
+      { value: ex.done, label: 'Concluídas' },
+      { value: ex.blocked, label: 'Bloqueadas' },
+      { value: ex.in_progress, label: 'Em andamento' },
+      { value: fmtDuration(ex.avg_duration_seconds), label: 'Tempo médio de execução' },
+      { value: inv.work_items_done + ' / ' + inv.work_items_total, label: 'User Stories concluídas' },
+    ];
+    const container = $('tiles');
+    container.innerHTML = '';
+    for (const t of tiles) {
+      container.appendChild(el('div', { class: 'tile' }, [
+        el('div', { class: 'value' }, [String(t.value)]),
+        el('div', { class: 'label' }, [t.label]),
+      ]));
+    }
+  }
+
+  const STATUS_COLOR = {
+    allow: 'var(--status-good)',
+    ask: 'var(--status-warning)',
+    would_block: 'var(--status-serious)',
+    block: 'var(--status-critical)',
+  };
+  const STATUS_LABEL = { allow: 'Permitido', ask: 'Confirmação', would_block: 'Teria bloqueado', block: 'Bloqueado' };
+
+  function renderPolicyChart(rows) {
+    const target = $('policyChart');
+    target.innerHTML = '';
+    if (!rows.length) { target.innerHTML = '<div class="empty">Nenhuma decisão de política registrada ainda.</div>'; return; }
+
+    const byDecision = {};
+    for (const row of rows) byDecision[row.decision] = (byDecision[row.decision] || 0) + row.count;
+    const decisions = Object.keys(STATUS_LABEL).filter((d) => byDecision[d]);
+    const max = Math.max(...decisions.map((d) => byDecision[d]), 1);
+
+    const width = 420, rowH = 32, height = decisions.length * rowH + 10;
+    const svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: '100%', height, role: 'img' }, []);
+    decisions.forEach((d, i) => {
+      const y = i * rowH + 6;
+      const barMax = width - 150;
+      const w = Math.max(4, (byDecision[d] / max) * barMax);
+      svg.appendChild(el('text', { x: 0, y: y + 14, class: 'bar-label' }, [STATUS_LABEL[d]]));
+      const bar = el('rect', { x: 140, y, width: w, height: 16, rx: 4, ry: 4, fill: STATUS_COLOR[d] }, []);
+      bar.appendChild(el('title', {}, [STATUS_LABEL[d] + ': ' + byDecision[d]]));
+      svg.appendChild(bar);
+      svg.appendChild(el('text', { x: 140 + w + 8, y: y + 14, class: 'bar-label' }, [String(byDecision[d])]));
+    });
+    target.appendChild(svg);
+  }
+
+  function renderTimeseries(rows) {
+    const target = $('timeseriesChart');
+    target.innerHTML = '';
+    if (!rows.length) { target.innerHTML = '<div class="empty">Sem execuções no período selecionado.</div>'; return; }
+
+    const width = 480, height = 220, padL = 32, padB = 24, padT = 10, padR = 10;
+    const plotW = width - padL - padR, plotH = height - padT - padB;
+    const maxY = Math.max(...rows.map((r) => r.started), 1);
+    const xStep = rows.length > 1 ? plotW / (rows.length - 1) : 0;
+    const yFor = (v) => padT + plotH - (v / maxY) * plotH;
+    const xFor = (i) => padL + i * xStep;
+
+    const svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: '100%', height, role: 'img' }, []);
+
+    for (let g = 0; g <= 4; g++) {
+      const y = padT + (plotH / 4) * g;
+      svg.appendChild(el('line', { x1: padL, x2: width - padR, y1: y, y2: y, stroke: 'var(--grid)', 'stroke-width': 1 }, []));
+    }
+    svg.appendChild(el('line', { x1: padL, x2: width - padR, y1: padT + plotH, y2: padT + plotH, stroke: 'var(--baseline)', 'stroke-width': 1 }, []));
+
+    function path(field) {
+      return rows.map((r, i) => (i === 0 ? 'M' : 'L') + xFor(i).toFixed(1) + ',' + yFor(r[field]).toFixed(1)).join(' ');
+    }
+
+    svg.appendChild(el('path', { d: path('started'), fill: 'none', stroke: 'var(--series-1)', 'stroke-width': 2, 'stroke-linecap': 'round' }, []));
+    svg.appendChild(el('path', { d: path('done'), fill: 'none', stroke: 'var(--series-3)', 'stroke-width': 2, 'stroke-linecap': 'round' }, []));
+
+    rows.forEach((r, i) => {
+      const x = xFor(i);
+      const label = new Date(r.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const cStarted = el('circle', { cx: x, cy: yFor(r.started), r: 4, fill: 'var(--series-1)' }, []);
+      cStarted.appendChild(el('title', {}, [label + ' — iniciadas: ' + r.started]));
+      svg.appendChild(cStarted);
+      const cDone = el('circle', { cx: x, cy: yFor(r.done), r: 4, fill: 'var(--series-3)' }, []);
+      cDone.appendChild(el('title', {}, [label + ' — concluídas: ' + r.done]));
+      svg.appendChild(cDone);
+      if (i === 0 || i === rows.length - 1 || i % Math.ceil(rows.length / 6) === 0) {
+        svg.appendChild(el('text', { x, y: height - 4, 'text-anchor': 'middle' }, [label]));
+      }
+    });
+
+    target.appendChild(svg);
+  }
+
+  function ratioCell(done, total) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    return el('td', {}, [
+      el('span', { class: 'ratio-bar' }, [el('span', { style: 'width:' + pct + '%' }, [])]),
+      String(done) + ' / ' + total,
+    ]);
+  }
+
+  function renderTable(tableId, rows, rowFn, emptyMsg) {
+    const tbody = document.querySelector('#' + tableId + ' tbody');
+    tbody.innerHTML = '';
+    if (!rows.length) {
+      tbody.appendChild(el('tr', {}, [el('td', { colspan: 8, class: 'empty' }, [emptyMsg])]));
+      return;
+    }
+    for (const row of rows) tbody.appendChild(rowFn(row));
+  }
+
+  function renderOrgTable(rows) {
+    renderTable('orgTable', rows, (r) => el('tr', {}, [
+      el('td', {}, [r.organization_name]),
+      el('td', { class: 'num' }, [String(r.projects_count)]),
+      el('td', { class: 'num' }, [String(r.total_executions)]),
+      el('td', { class: 'num' }, [String(r.done_executions)]),
+      el('td', { class: 'num' }, [String(r.blocked_executions)]),
+      el('td', { class: 'num' }, [fmtDuration(r.avg_duration_seconds)]),
+      el('td', {}, [fmtDate(r.last_execution_at)]),
+    ]), 'Nenhuma organização encontrada.');
+  }
+
+  function renderProjectTable(rows) {
+    renderTable('projectTable', rows, (r) => {
+      const tr = el('tr', {}, [
+        el('td', {}, [r.organization_slug]),
+        el('td', {}, [r.project_name]),
+      ]);
+      tr.appendChild(ratioCell(r.work_items_done, r.work_items_total));
+      tr.appendChild(el('td', { class: 'num' }, [String(r.total_executions)]));
+      tr.appendChild(el('td', { class: 'num' }, [String(r.done_executions)]));
+      tr.appendChild(el('td', { class: 'num' }, [String(r.blocked_executions)]));
+      tr.appendChild(el('td', { class: 'num' }, [fmtDuration(r.avg_duration_seconds)]));
+      tr.appendChild(el('td', {}, [fmtDate(r.last_execution_at)]));
+      return tr;
+    }, 'Nenhum projeto encontrado.');
+  }
+
+  function renderActorTable(rows) {
+    renderTable('actorTable', rows, (r) => el('tr', {}, [
+      el('td', {}, [r.display_name + ' (' + r.abe_email + ')']),
+      el('td', {}, [r.organization_slug]),
+      el('td', { class: 'num' }, [String(r.total_executions)]),
+      el('td', { class: 'num' }, [String(r.done_executions)]),
+      el('td', { class: 'num' }, [String(r.approvals_count)]),
+      el('td', { class: 'num' }, [fmtDuration(r.avg_duration_seconds)]),
+      el('td', {}, [fmtDate(r.last_execution_at)]),
+    ]), 'Nenhum ABE com atividade nesse filtro.');
+  }
+
+  function populateSelect(select, items, valueKey, labelKey, currentValue) {
+    const current = currentValue ?? select.value;
+    select.innerHTML = '<option value="">' + (select.id === 'orgFilter' ? 'Todas' : 'Todos') + '</option>';
+    for (const item of items) {
+      const opt = el('option', { value: item[valueKey] }, [item[labelKey]]);
+      select.appendChild(opt);
+    }
+    select.value = current;
+  }
+
+  async function loadAll() {
+    const orgSlug = $('orgFilter').value;
+    const projectSlug = $('projectFilter').value;
+    const days = $('daysFilter').value;
+
+    setStatus('carregando…', '');
+
+    const [summary, orgs, projects, actors, timeseries] = await Promise.all([
+      api('/api/v1/analytics/summary'),
+      api('/api/v1/analytics/organizations'),
+      api('/api/v1/analytics/projects' + (orgSlug ? '?organization_slug=' + encodeURIComponent(orgSlug) : '')),
+      api('/api/v1/analytics/actors' + buildQuery({ organization_slug: orgSlug, project_slug: projectSlug })),
+      api('/api/v1/analytics/timeseries' + buildQuery({ project_slug: projectSlug, days })),
+    ]);
+
+    state.organizations = orgs.items;
+    state.projects = projects.items;
+
+    populateSelect($('orgFilter'), orgs.items, 'organization_slug', 'organization_name', orgSlug);
+    populateSelect($('projectFilter'), projects.items, 'project_slug', 'project_name', projectSlug);
+
+    renderTiles(summary);
+    renderPolicyChart(summary.policy_decisions);
+    renderTimeseries(timeseries.items);
+    renderOrgTable(orgs.items);
+    renderProjectTable(projects.items);
+    renderActorTable(actors.items);
+
+    setStatus('conectado — ' + new Date().toLocaleTimeString('pt-BR'), 'ok');
+  }
+
+  function buildQuery(params) {
+    const parts = [];
+    for (const [k, v] of Object.entries(params)) if (v) parts.push(k + '=' + encodeURIComponent(v));
+    return parts.length ? '?' + parts.join('&') : '';
+  }
+
+  function setStatus(text, cls) {
+    const node = $('connStatus');
+    node.textContent = text;
+    node.className = cls || '';
+  }
+
+  $('connectBtn').addEventListener('click', () => {
+    state.apiUrl = $('apiUrl').value.replace(/\/$/, '');
+    state.apiKey = $('apiKey').value;
+    saveConn();
+    loadAll().catch((err) => setStatus('erro: ' + err.message, 'err'));
+  });
+
+  $('orgFilter').addEventListener('change', () => {
+    $('projectFilter').value = '';
+    loadAll().catch((err) => setStatus('erro: ' + err.message, 'err'));
+  });
+  $('projectFilter').addEventListener('change', () => loadAll().catch((err) => setStatus('erro: ' + err.message, 'err')));
+  $('daysFilter').addEventListener('change', () => loadAll().catch((err) => setStatus('erro: ' + err.message, 'err')));
+
+  loadSavedConn();
+  if ($('apiKey').value) $('connectBtn').click();
+})();
+</script>

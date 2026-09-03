@@ -14,7 +14,7 @@
     "seed": "node --env-file=.env scripts/seed.mjs",
     "db:setup": "npm run migrate && npm run seed",
     "test": "node --test",
-    "check": "node --check src/server.mjs && node --check .claude/hooks/lynse-hook.mjs && node --check .claude/hooks/lynse-cli.mjs"
+    "check": "node --check src/server.mjs && node --check src/analytics.mjs && node --check .claude/hooks/lynse-hook.mjs && node --check .claude/hooks/lynse-cli.mjs"
   },
   "dependencies": {
     "pg": "^8.16.3"

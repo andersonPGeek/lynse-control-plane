@@ -1,9 +1,22 @@
 import http from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.mjs';
 import { closePool, query, transaction } from './db.mjs';
 import { evaluatePolicy } from './policy-engine.mjs';
 import { parseLogRequest, parseMetricRequest, summarizeMeasurements } from './otel.mjs';
+import {
+  getByActor,
+  getByOrganization,
+  getByProject,
+  getSummary as getAnalyticsSummary,
+  getTimeseries,
+} from './analytics.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DASHBOARD_PATH = resolve(__dirname, '../public/dashboard.html');
 
 const EXECUTION_STATUSES = new Set([
   'briefing', 'planning', 'building', 'verifying', 'release', 'observing',
@@ -468,6 +481,12 @@ async function route(request, response) {
     return send(response, 200, { status: 'ok', service: 'lynse-control-plane', time: new Date().toISOString() });
   }
 
+  if (request.method === 'GET' && (pathname === '/dashboard' || pathname === '/dashboard/')) {
+    const html = await readFile(DASHBOARD_PATH, 'utf8');
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    return response.end(html);
+  }
+
   if (!apiKeyMatches(request.headers['x-api-key'])) throw new HttpError(401, 'API key inválida');
 
   if (request.method === 'POST' && pathname === '/api/v1/executions/start') {
@@ -498,6 +517,31 @@ async function route(request, response) {
   if (request.method === 'POST' && pathname === '/otel/v1/logs') {
     const accepted = await storeOtelRows(parseLogRequest(await readJson(request)));
     return send(response, 200, { partialSuccess: {}, accepted });
+  }
+
+  if (request.method === 'GET' && pathname === '/api/v1/analytics/summary') {
+    return send(response, 200, await getAnalyticsSummary());
+  }
+  if (request.method === 'GET' && pathname === '/api/v1/analytics/organizations') {
+    return send(response, 200, { items: await getByOrganization() });
+  }
+  if (request.method === 'GET' && pathname === '/api/v1/analytics/projects') {
+    const items = await getByProject({ organizationSlug: url.searchParams.get('organization_slug') });
+    return send(response, 200, { items });
+  }
+  if (request.method === 'GET' && pathname === '/api/v1/analytics/actors') {
+    const items = await getByActor({
+      organizationSlug: url.searchParams.get('organization_slug'),
+      projectSlug: url.searchParams.get('project_slug'),
+    });
+    return send(response, 200, { items });
+  }
+  if (request.method === 'GET' && pathname === '/api/v1/analytics/timeseries') {
+    const items = await getTimeseries({
+      projectSlug: url.searchParams.get('project_slug'),
+      days: Number.parseInt(url.searchParams.get('days') ?? '30', 10),
+    });
+    return send(response, 200, { items });
   }
 
   const statusPath = matchPath(pathname, /^\/api\/v1\/executions\/(?<id>[0-9a-f-]+)\/status$/i);
