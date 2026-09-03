@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.mjs",
-    "start": "node --env-file=.env src/server.mjs",
+    "start": "node src/server.mjs",
     "migrate": "node --env-file=.env scripts/migrate.mjs",
     "seed": "node --env-file=.env scripts/seed.mjs",
     "db:setup": "npm run migrate && npm run seed",
