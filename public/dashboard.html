@@ -202,13 +202,17 @@
 
   const state = { apiUrl: '', apiKey: '', organizations: [], projects: [] };
 
+  function sameOriginDefault() {
+    return /^https?:$/.test(window.location.protocol) ? window.location.origin : '';
+  }
+
   function loadSavedConn() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      $('apiUrl').value = saved.apiUrl || window.location.origin;
+      $('apiUrl').value = saved.apiUrl || sameOriginDefault();
       $('apiKey').value = saved.apiKey || '';
     } catch {
-      $('apiUrl').value = window.location.origin;
+      $('apiUrl').value = sameOriginDefault();
     }
   }
 
@@ -460,7 +464,12 @@
   }
 
   $('connectBtn').addEventListener('click', () => {
-    state.apiUrl = $('apiUrl').value.replace(/\/$/, '');
+    const url = $('apiUrl').value.trim().replace(/\/$/, '');
+    if (!/^https?:\/\/.+/i.test(url)) {
+      setStatus('URL da API inválida — use http:// ou https://', 'err');
+      return;
+    }
+    state.apiUrl = url;
     state.apiKey = $('apiKey').value;
     saveConn();
     loadAll().catch((err) => setStatus('erro: ' + err.message, 'err'));

@@ -31,10 +31,18 @@ class HttpError extends Error {
   }
 }
 
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS',
+  'access-control-allow-headers': 'content-type, x-api-key',
+  'access-control-max-age': '600',
+};
+
 function send(response, status, body) {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
+    ...CORS_HEADERS,
   });
   response.end(JSON.stringify(body));
 }
@@ -483,7 +491,7 @@ async function route(request, response) {
 
   if (request.method === 'GET' && (pathname === '/dashboard' || pathname === '/dashboard/')) {
     const html = await readFile(DASHBOARD_PATH, 'utf8');
-    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...CORS_HEADERS });
     return response.end(html);
   }
 
@@ -565,6 +573,10 @@ async function route(request, response) {
 }
 
 const server = http.createServer((request, response) => {
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204, CORS_HEADERS);
+    return response.end();
+  }
   route(request, response).catch((error) => {
     const status = error.status ?? (error.code === '23503' ? 409 : 500);
     console.error(JSON.stringify({
