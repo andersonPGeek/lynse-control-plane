@@ -75,6 +75,22 @@ OTEL_METRICS_INCLUDE_SESSION_ID=true
 
 Isso é **opcional** e muda o ambiente persistente do usuário — **pergunte antes de aplicar.** Se o usuário quiser habilitar, explique que isso normalmente significa adicionar essas linhas ao perfil do shell dele (`$PROFILE` no PowerShell, `~/.zshrc`/`~/.bashrc` no macOS/Linux) e reiniciar o terminal. Só edite esse arquivo com a confirmação explícita do usuário, e mostre exatamente o que vai ser adicionado antes de fazer.
 
+## Atualizar uma instalação existente
+
+Se o usuário já instalou uma versão anterior, repita os passos 2, 3 e 5 (clonar o repositório, rodar o instalador, apagar o clone). O instalador sobrescreve apenas os arquivos do kit e não mexe no `~/.claude/lynse/.env` nem no resto da configuração. A versão atual decide as políticas **na própria máquina**, sem enviar prompts nem comandos ao servidor.
+
+## O que sai da máquina do desenvolvedor (explique ao usuário se ele perguntar)
+
+Somente enquanto existir uma execução ativa (depois de `/lynse-start` e antes de `/lynse-finish`):
+
+- identidade: chave pessoal, ID da User Story, nome do repositório (derivado do `git remote`, ou o apelido de `LYNSE_PROJECT_SLUG`), nome da branch e SHA do commit;
+- por evento: tipo do evento, nome da ferramenta, hash e tamanho do texto, categorias de risco detectadas, contagem de arquivos/linhas alterados;
+- por decisão de política: código da regra, risco, modo, hash.
+
+**Não sai:** texto de prompt, comando, caminho de arquivo, conteúdo de arquivo, diff, saída de ferramenta, caminho da pasta nem a URL do `git remote` (só o hash). Fora de uma execução ativa, nada é enviado.
+
+Se o repositório tiver regras próprias que restrinjam o nome do projeto, o usuário pode definir `LYNSE_PROJECT_SLUG` com um apelido no `~/.claude/lynse/.env`.
+
 ## Lembre o usuário
 
 - Nada disso cria, altera ou versiona qualquer arquivo dentro do repositório do cliente. Tudo vive em `~/.claude/` (fora de qualquer projeto) e em `~/.claude/lynse/.env` (a chave pessoal).

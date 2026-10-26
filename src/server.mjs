@@ -304,6 +304,24 @@ async function evaluateAndStorePolicy(body) {
   return { ...result, mode };
 }
 
+async function recordPolicyDecision(body) {
+  requireFields(body, ['execution_id', 'rule_code', 'decision', 'risk_level', 'reason', 'mode', 'input_hash']);
+  if (!['allow', 'ask', 'block', 'would_block'].includes(body.decision)) throw new HttpError(400, 'Decisão inválida');
+  if (!['low', 'medium', 'high', 'critical'].includes(body.risk_level)) throw new HttpError(400, 'Nível de risco inválido');
+  if (!['audit', 'enforcement'].includes(body.mode)) throw new HttpError(400, 'Modo inválido');
+  const result = await query(
+    `INSERT INTO policy_decisions
+      (execution_id, claude_session_id, rule_code, decision, risk_level, reason, mode, input_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING id`,
+    [
+      body.execution_id, body.claude_session_id ?? null, String(body.rule_code).slice(0, 64),
+      body.decision, body.risk_level, String(body.reason).slice(0, 500), body.mode, String(body.input_hash).slice(0, 128),
+    ],
+  );
+  return { id: result.rows[0].id };
+}
+
 async function createApproval(body, actor) {
   const abeEmail = actor?.email ?? body.abe_email;
   requireFields({ ...body, abe_email: abeEmail }, ['execution_id', 'abe_email', 'gate', 'decision']);
@@ -645,6 +663,9 @@ async function route(request, response) {
   }
   if (request.method === 'POST' && pathname === '/api/v1/events') {
     return send(response, 202, await registerEvent(await readJson(request)));
+  }
+  if (request.method === 'POST' && pathname === '/api/v1/policies/record') {
+    return send(response, 201, await recordPolicyDecision(await readJson(request)));
   }
   if (request.method === 'POST' && pathname === '/api/v1/policies/evaluate') {
     return send(response, 200, await evaluateAndStorePolicy(await readJson(request)));

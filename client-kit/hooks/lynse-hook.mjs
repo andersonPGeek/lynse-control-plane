@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { loadLynseEnv } from './lynse-env.mjs';
 import { readState } from './lynse-state.mjs';
+import { evaluatePolicy } from './policy-engine.mjs';
 import { classifyText, redactSecrets, sha256 } from './redact.mjs';
 
 loadLynseEnv();
@@ -46,7 +47,7 @@ async function api(path, body) {
   return result;
 }
 
-function capture(value, mode) {
+function capture(value, mode, allowPreview = true) {
   const raw = typeof value === 'string' ? value : JSON.stringify(value ?? {});
   if (mode === 'full') {
     const redacted = redactSecrets(raw);
@@ -59,7 +60,7 @@ function capture(value, mode) {
     };
   }
   const classified = classifyText(raw);
-  if (mode === 'metadata') delete classified.redacted_preview;
+  if (mode === 'metadata' || !allowPreview) delete classified.redacted_preview;
   return classified;
 }
 
@@ -97,8 +98,8 @@ function eventPayload(input, captureMode) {
   };
   if (input.prompt !== undefined) payload.prompt = capture(input.prompt, captureMode);
   if (input.tool_input !== undefined) payload.tool_input = capture(input.tool_input, captureMode);
-  if (input.tool_response !== undefined) payload.tool_response = capture(input.tool_response, captureMode);
-  if (input.error !== undefined) payload.error = capture(input.error, captureMode);
+  if (input.tool_response !== undefined) payload.tool_response = capture(input.tool_response, captureMode, false);
+  if (input.error !== undefined) payload.error = capture(input.error, captureMode, false);
   if (['PostToolUse', 'PostToolUseFailure'].includes(input.hook_event_name)) {
     payload.diff = diffSnapshot(input.cwd ?? process.cwd());
   }
@@ -133,33 +134,34 @@ const state = await readState(remote || root);
 
 if (!state?.active || !state.execution_id) process.exit(0);
 
-const captureMode = process.env.LYNSE_CAPTURE_MODE ?? 'classified';
-const failMode = process.env.LYNSE_FAIL_MODE ?? 'open';
+const captureMode = process.env.LYNSE_CAPTURE_MODE ?? 'metadata';
 const isPolicyEvent = ['PreToolUse', 'UserPromptSubmit'].includes(input.hook_event_name);
 
 let policy = null;
 const occurredAt = new Date().toISOString();
 
-try {
-  if (isPolicyEvent) {
-    policy = await api('/api/v1/policies/evaluate', {
+if (isPolicyEvent) {
+  const mode = process.env.LYNSE_MODE ?? state.mode;
+  policy = evaluatePolicy({
+    hook_event_name: input.hook_event_name,
+    tool_name: input.tool_name,
+    tool_input: input.tool_input,
+    prompt: input.prompt,
+    mode,
+  });
+  try {
+    await api('/api/v1/policies/record', {
       execution_id: state.execution_id,
       claude_session_id: input.session_id,
-      hook_event_name: input.hook_event_name,
-      tool_name: input.tool_name,
-      tool_input: input.tool_input,
-      prompt: input.prompt,
-      mode: process.env.LYNSE_MODE ?? state.mode,
+      rule_code: policy.rule_code,
+      decision: policy.recorded_decision,
+      risk_level: policy.risk_level,
+      reason: policy.reason,
+      mode: mode === 'enforcement' ? 'enforcement' : 'audit',
+      input_hash: policy.input_hash,
     });
-  }
-
-} catch (error) {
-  if (failMode === 'closed' && isPolicyEvent) {
-    process.stdout.write(JSON.stringify(denyOutput(
-      input.hook_event_name,
-      `Control Plane Lynse indisponível: ${error.message}`,
-    )));
-    process.exit(0);
+  } catch {
+    // A decisão é local; falha ao registrar não altera o resultado.
   }
 }
 
@@ -182,7 +184,6 @@ try {
       JSON.stringify(input.tool_input ?? input.prompt ?? ''),
     ].join('|')),
     payload: eventPayload(input, captureMode),
-    cwd: input.cwd,
   });
 
 } catch {

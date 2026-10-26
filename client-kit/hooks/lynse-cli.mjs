@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { loadLynseEnv } from './lynse-env.mjs';
 import { readState, saveState } from './lynse-state.mjs';
@@ -69,9 +70,8 @@ async function start(externalRef, sessionId) {
       claude_session_id: sessionId || undefined,
       branch_name: git(['branch', '--show-current']),
       mode: process.env.LYNSE_MODE ?? 'audit',
-      cwd: root,
       context_snapshot: {
-        git_remote: remote,
+        git_remote_hash: remote ? createHash('sha256').update(remote).digest('hex') : null,
         head_sha: git(['rev-parse', 'HEAD']),
       },
     },

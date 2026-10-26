@@ -13,7 +13,7 @@ const SETTINGS_PATH = resolve(CLAUDE_DIR, 'settings.json');
 const CLAUDE_MD_PATH = resolve(CLAUDE_DIR, 'CLAUDE.md');
 const ENV_PATH = resolve(LYNSE_DIR, '.env');
 
-const HOOK_FILES = ['lynse-cli.mjs', 'lynse-hook.mjs', 'lynse-env.mjs', 'lynse-state.mjs', 'redact.mjs'];
+const HOOK_FILES = ['lynse-cli.mjs', 'lynse-hook.mjs', 'lynse-env.mjs', 'lynse-state.mjs', 'redact.mjs', 'policy-engine.mjs'];
 const SKILL_NAMES = ['lynse-start', 'lynse-approve', 'lynse-status', 'lynse-finish'];
 const HOOK_EVENTS = [
   'SessionStart', 'UserPromptSubmit', 'UserPromptExpansion', 'PreToolUse', 'PostToolUse',

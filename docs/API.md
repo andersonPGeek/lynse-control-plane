@@ -10,7 +10,8 @@ Base local: `http://localhost:3333`. Todas as rotas, exceto `/health`, exigem `x
 | `POST` | `/api/v1/executions/start` | abre e correlaciona uma User Story |
 | `GET` | `/api/v1/executions` | lista execuções, com filtros de status e limite |
 | `POST` | `/api/v1/events` | recebe um evento normalizado de hook |
-| `POST` | `/api/v1/policies/evaluate` | avalia ALLOW, ASK ou BLOCK e registra a decisão |
+| `POST` | `/api/v1/policies/record` | registra uma decisão de política **já tomada no hook, na máquina do dev** (regra, risco, modo, hash — sem texto bruto). É o caminho usado pelo `client-kit` |
+| `POST` | `/api/v1/policies/evaluate` | avalia ALLOW, ASK ou BLOCK no servidor e registra a decisão. **Recebe o texto bruto do prompt/ferramenta** — mantido só para kits antigos; não usar em instalações novas |
 | `POST` | `/api/v1/approvals` | registra gate humano |
 | `PATCH` | `/api/v1/executions/{id}/status` | muda a etapa da execução |
 | `GET` | `/api/v1/executions/{id}` | retorna execução e relacionamentos |
