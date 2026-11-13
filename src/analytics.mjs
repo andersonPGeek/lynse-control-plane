@@ -15,7 +15,7 @@ function mapCountRow(row) {
 }
 
 export function windowFor(days) {
-  const n = Math.min(Math.max(Number.isFinite(days) ? Math.trunc(days) : 30, 1), 365);
+  const n = Math.min(Math.max(Number.isFinite(days) ? Math.trunc(days) : 30, 1), 3650);
   const end = new Date();
   const start = new Date(end.getTime() - n * 86_400_000);
   const previousStart = new Date(start.getTime() - n * 86_400_000);
@@ -98,7 +98,11 @@ export async function getSummary({ organizationSlug, projectSlug, days } = {}) {
   const scope = { organizationSlug, projectSlug };
   const w = windowFor(days);
 
-  const [current, previous, policy, previousPolicy, deployments, events, rules] = await Promise.all([
+  const lastDone = query(
+    `SELECT max(e.ended_at) AS last_done_at FROM executions e ${SCOPE_JOIN} WHERE ${SCOPE_WHERE} AND e.status = 'done'`,
+    [organizationSlug || null, projectSlug || null],
+  );
+  const [current, previous, policy, previousPolicy, deployments, events, rules, lastDoneResult] = await Promise.all([
     executionMetrics(scope, w.start, w.end),
     executionMetrics(scope, w.previous_start, w.previous_end),
     scopedGroupCount('policy_decisions', 'created_at', ['decision', 'risk_level'], scope, w.start, w.end, 'ORDER BY 1, 2'),
@@ -106,10 +110,12 @@ export async function getSummary({ organizationSlug, projectSlug, days } = {}) {
     scopedGroupCount('deployments', 'started_at', ['environment', 'status'], scope, w.start, w.end, 'ORDER BY 1, 2'),
     scopedGroupCount('audit_events', 'occurred_at', ['event_type'], scope, w.start, w.end, 'ORDER BY count DESC'),
     scopedGroupCount('policy_decisions', 'created_at', ['rule_code', 'decision'], scope, w.start, w.end, 'ORDER BY count DESC'),
+    lastDone,
   ]);
 
   return {
     window: w,
+    last_done_at: lastDoneResult.rows[0]?.last_done_at ?? null,
     executions: current,
     previous: {
       started: previous.started,
@@ -207,6 +213,36 @@ async function getBreakdown(dimension, { organizationSlug, projectSlug, days } =
 export const getByOrganization = (filters) => getBreakdown('organization', filters);
 export const getByProject = (filters) => getBreakdown('project', filters);
 export const getByActor = (filters) => getBreakdown('actor', filters);
+
+export async function getExecutions({ organizationSlug, projectSlug, days } = {}) {
+  const w = windowFor(days);
+  const result = await query(
+    `
+    SELECT
+      e.id, e.status, e.mode, e.started_at, e.ended_at,
+      wi.external_ref, wi.title,
+      o.slug AS organization_slug, o.name AS organization_name,
+      p.slug AS project_slug, p.name AS project_name,
+      a.email AS abe_email, a.display_name,
+      EXISTS (SELECT 1 FROM approvals ap WHERE ap.execution_id = e.id AND ap.gate = 'plan' AND ap.decision = 'approved') AS plan_approved,
+      EXISTS (SELECT 1 FROM approvals ap WHERE ap.execution_id = e.id AND ap.gate = 'pr' AND ap.decision = 'approved') AS pr_approved,
+      EXISTS (SELECT 1 FROM approvals ap WHERE ap.execution_id = e.id AND ap.gate = 'deploy' AND ap.decision = 'approved') AS deploy_approved,
+      EXISTS (SELECT 1 FROM deployments d WHERE d.execution_id = e.id AND d.environment = 'prod' AND d.status = 'succeeded') AS prod_deployed,
+      (SELECT max(s.last_seen_at) FROM agent_sessions s WHERE s.execution_id = e.id) AS last_activity_at,
+      (SELECT count(*) FROM agent_sessions s WHERE s.execution_id = e.id)::int AS sessions_count
+    FROM executions e
+    ${SCOPE_JOIN}
+    JOIN work_items wi ON wi.id = e.work_item_id
+    JOIN actors a ON a.id = e.abe_id
+    WHERE ${SCOPE_WHERE}
+      AND (${STARTED_IN} OR ${DONE_IN} OR ${OPEN} OR e.status = 'blocked')
+    ORDER BY e.started_at DESC
+    LIMIT 500
+    `,
+    [organizationSlug || null, projectSlug || null, w.start, w.end],
+  );
+  return { window: w, items: result.rows };
+}
 
 export async function getFilterOptions() {
   const result = await query(`

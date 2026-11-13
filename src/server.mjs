@@ -11,6 +11,7 @@ import {
   getByActor,
   getByOrganization,
   getByProject,
+  getExecutions,
   getFilterOptions,
   getSummary as getAnalyticsSummary,
   getTimeseries,
@@ -724,6 +725,7 @@ async function route(request, response) {
       '/api/v1/analytics/timeseries': async () => ({ items: await getTimeseries(filters) }),
       '/api/v1/analytics/usage': () => getUsage(filters),
       '/api/v1/analytics/filters': async () => ({ items: await getFilterOptions() }),
+      '/api/v1/analytics/executions': () => getExecutions(filters),
     };
     if (handlers[pathname]) return send(response, 200, await handlers[pathname]());
   }

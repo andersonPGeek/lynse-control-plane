@@ -27,6 +27,7 @@ Base local: `http://localhost:3333`. Todas as rotas, exceto `/health`, exigem `x
 | `GET` | `/api/v1/analytics/actors` | comparativo por ABE (inclui aprovações) |
 | `GET` | `/api/v1/analytics/timeseries` | um ponto por dia: iniciadas (pela data de início) e concluídas (pela data de conclusão) |
 | `GET` | `/api/v1/analytics/filters` | organizações e projetos disponíveis para os filtros |
+| `GET` | `/api/v1/analytics/executions` | execuções iniciadas ou concluídas no período e todas as abertas (até 500), com as aprovações de cada uma, última atividade e nº de sessões |
 | `GET` | `/dashboard` | página HTML com os gráficos e tabelas de indicadores (sem `x-api-key`; a chave é informada na própria página) |
 | `POST` | `/api/v1/admin/api-keys` | cria um ABE (se necessário) e uma chave pessoal para ele — **requer a chave administrativa** |
 | `GET` | `/api/v1/admin/api-keys` | lista as chaves emitidas (sem expor o valor) — **requer a chave administrativa** |
@@ -152,7 +153,9 @@ curl http://localhost:3333/api/v1/analytics/actors?project_slug=agilhes-process-
 curl http://localhost:3333/api/v1/analytics/timeseries?days=30 -H 'x-api-key: change-me-local'
 ```
 
-Todas as rotas de analytics são somente leitura e aceitam os **mesmos três filtros**: `organization_slug`, `project_slug` e `days` (1 a 365, padrão 30). O período anterior usado nas variações é a janela de mesmo tamanho imediatamente antes.
+Todas as rotas de analytics são somente leitura e aceitam os **mesmos três filtros**: `organization_slug`, `project_slug` e `days` (1 a 3650, padrão 30; 3650 equivale a "todo o período"). O período anterior usado nas variações é a janela de mesmo tamanho imediatamente antes.
+
+O `summary` também traz `last_done_at`, a data da última conclusão no escopo, independente do período.
 
 Regras de contagem:
 - **Iniciadas**: `started_at` dentro do período.
