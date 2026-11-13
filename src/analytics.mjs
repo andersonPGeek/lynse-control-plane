@@ -1,5 +1,7 @@
 import { query } from './db.mjs';
 
+const TIMEZONE = process.env.LYNSE_TIMEZONE || 'America/Sao_Paulo';
+
 function toNumber(value) {
   return value === null || value === undefined ? null : Number(value);
 }
@@ -12,243 +14,231 @@ function mapCountRow(row) {
   return out;
 }
 
-export async function getSummary() {
-  const [totals, inventory, policy, deployments, events] = await Promise.all([
-    query(`
-      SELECT
-        count(*) AS total_executions,
-        count(*) FILTER (WHERE status = 'done') AS done_executions,
-        count(*) FILTER (WHERE status = 'blocked') AS blocked_executions,
-        count(*) FILTER (WHERE status = 'cancelled') AS cancelled_executions,
-        count(*) FILTER (WHERE status NOT IN ('done', 'blocked', 'cancelled')) AS in_progress_executions,
-        avg(extract(epoch FROM (ended_at - started_at)))
-          FILTER (WHERE status = 'done' AND ended_at IS NOT NULL) AS avg_duration_seconds,
-        min(started_at) AS first_execution_at,
-        max(started_at) AS last_execution_at
-      FROM executions
-    `),
-    query(`
-      SELECT
-        (SELECT count(*) FROM organizations) AS organizations_count,
-        (SELECT count(*) FROM projects) AS projects_count,
-        (SELECT count(*) FROM repositories) AS repositories_count,
-        (SELECT count(*) FROM actors) AS actors_count,
-        (SELECT count(*) FROM work_items) AS work_items_total,
-        (SELECT count(*) FROM work_items WHERE status = 'done') AS work_items_done
-    `),
-    query(`
-      SELECT decision, risk_level, count(*)::int AS count
-      FROM policy_decisions
-      GROUP BY decision, risk_level
-      ORDER BY decision, risk_level
-    `),
-    query(`
-      SELECT environment, status, count(*)::int AS count
-      FROM deployments
-      GROUP BY environment, status
-      ORDER BY environment, status
-    `),
-    query(`
-      SELECT event_type, count(*)::int AS count
-      FROM audit_events
-      GROUP BY event_type
-      ORDER BY count DESC
-    `),
-  ]);
-
-  const t = totals.rows[0];
-  const i = inventory.rows[0];
-
+export function windowFor(days) {
+  const n = Math.min(Math.max(Number.isFinite(days) ? Math.trunc(days) : 30, 1), 365);
+  const end = new Date();
+  const start = new Date(end.getTime() - n * 86_400_000);
+  const previousStart = new Date(start.getTime() - n * 86_400_000);
   return {
-    executions: {
-      total: toNumber(t.total_executions),
-      done: toNumber(t.done_executions),
-      blocked: toNumber(t.blocked_executions),
-      cancelled: toNumber(t.cancelled_executions),
-      in_progress: toNumber(t.in_progress_executions),
-      avg_duration_seconds: toNumber(t.avg_duration_seconds),
-      first_execution_at: t.first_execution_at,
-      last_execution_at: t.last_execution_at,
-    },
-    inventory: {
-      organizations: toNumber(i.organizations_count),
-      projects: toNumber(i.projects_count),
-      repositories: toNumber(i.repositories_count),
-      actors: toNumber(i.actors_count),
-      work_items_total: toNumber(i.work_items_total),
-      work_items_done: toNumber(i.work_items_done),
-    },
-    policy_decisions: policy.rows.map(mapCountRow),
-    deployments: deployments.rows.map(mapCountRow),
-    events_by_type: events.rows.map(mapCountRow),
+    days: n,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    previous_start: previousStart.toISOString(),
+    previous_end: start.toISOString(),
   };
 }
 
-export async function getByOrganization() {
-  const result = await query(`
-    SELECT
-      o.slug AS organization_slug,
-      o.name AS organization_name,
-      (SELECT count(*) FROM projects p WHERE p.organization_id = o.id) AS projects_count,
-      stats.total_executions,
-      stats.done_executions,
-      stats.blocked_executions,
-      stats.avg_duration_seconds,
-      stats.last_execution_at
-    FROM organizations o
-    LEFT JOIN LATERAL (
-      SELECT
-        count(*) AS total_executions,
-        count(*) FILTER (WHERE e.status = 'done') AS done_executions,
-        count(*) FILTER (WHERE e.status = 'blocked') AS blocked_executions,
-        avg(extract(epoch FROM (e.ended_at - e.started_at))) FILTER (WHERE e.status = 'done') AS avg_duration_seconds,
-        max(e.started_at) AS last_execution_at
-      FROM executions e
-      JOIN repositories r ON r.id = e.repository_id
-      JOIN projects p ON p.id = r.project_id
-      WHERE p.organization_id = o.id
-    ) stats ON true
-    ORDER BY o.slug
-  `);
+// $1 organização, $2 projeto, $3 início da janela, $4 fim da janela.
+const SCOPE_JOIN = `
+  JOIN repositories r ON r.id = e.repository_id
+  JOIN projects p ON p.id = r.project_id
+  JOIN organizations o ON o.id = p.organization_id`;
+const SCOPE_WHERE = `($1::text IS NULL OR o.slug = $1) AND ($2::text IS NULL OR p.slug = $2)`;
+const STARTED_IN = `(e.started_at >= $3 AND e.started_at < $4)`;
+const DONE_IN = `(e.status = 'done' AND e.ended_at >= $3 AND e.ended_at < $4)`;
+const OPEN = `(e.status NOT IN ('done', 'cancelled', 'blocked'))`;
+const DURATION = `extract(epoch FROM (e.ended_at - e.started_at))`;
 
-  return result.rows.map((row) => ({
-    organization_slug: row.organization_slug,
-    organization_name: row.organization_name,
-    projects_count: toNumber(row.projects_count),
-    total_executions: toNumber(row.total_executions) ?? 0,
-    done_executions: toNumber(row.done_executions) ?? 0,
-    blocked_executions: toNumber(row.blocked_executions) ?? 0,
-    avg_duration_seconds: toNumber(row.avg_duration_seconds),
-    last_execution_at: row.last_execution_at,
-  }));
-}
-
-export async function getByProject({ organizationSlug } = {}) {
+async function executionMetrics(scope, start, end) {
   const result = await query(
     `
     SELECT
-      o.slug AS organization_slug,
-      p.slug AS project_slug,
-      p.name AS project_name,
-      (SELECT count(*) FROM work_items wi WHERE wi.project_id = p.id) AS work_items_total,
-      (SELECT count(*) FROM work_items wi WHERE wi.project_id = p.id AND wi.status = 'done') AS work_items_done,
-      stats.total_executions,
-      stats.done_executions,
-      stats.blocked_executions,
-      stats.avg_duration_seconds,
-      stats.first_execution_at,
-      stats.last_execution_at
-    FROM projects p
-    JOIN organizations o ON o.id = p.organization_id
-    LEFT JOIN LATERAL (
-      SELECT
-        count(*) AS total_executions,
-        count(*) FILTER (WHERE e.status = 'done') AS done_executions,
-        count(*) FILTER (WHERE e.status = 'blocked') AS blocked_executions,
-        avg(extract(epoch FROM (e.ended_at - e.started_at))) FILTER (WHERE e.status = 'done') AS avg_duration_seconds,
-        min(e.started_at) AS first_execution_at,
-        max(e.started_at) AS last_execution_at
-      FROM executions e
-      JOIN repositories r ON r.id = e.repository_id
-      WHERE r.project_id = p.id
-    ) stats ON true
-    WHERE ($1::text IS NULL OR o.slug = $1)
-    ORDER BY o.slug, p.slug
-  `,
-    [organizationSlug || null],
-  );
-
-  return result.rows.map((row) => ({
-    organization_slug: row.organization_slug,
-    project_slug: row.project_slug,
-    project_name: row.project_name,
-    work_items_total: toNumber(row.work_items_total),
-    work_items_done: toNumber(row.work_items_done),
-    total_executions: toNumber(row.total_executions) ?? 0,
-    done_executions: toNumber(row.done_executions) ?? 0,
-    blocked_executions: toNumber(row.blocked_executions) ?? 0,
-    avg_duration_seconds: toNumber(row.avg_duration_seconds),
-    first_execution_at: row.first_execution_at,
-    last_execution_at: row.last_execution_at,
-  }));
-}
-
-export async function getByActor({ organizationSlug, projectSlug } = {}) {
-  const result = await query(
-    `
-    SELECT
-      o.slug AS organization_slug,
-      a.email AS abe_email,
-      a.display_name,
-      stats.total_executions,
-      stats.done_executions,
-      stats.blocked_executions,
-      stats.avg_duration_seconds,
-      stats.last_execution_at,
-      appr.approvals_count
-    FROM actors a
-    JOIN organizations o ON o.id = a.organization_id
-    LEFT JOIN LATERAL (
-      SELECT
-        count(*) AS total_executions,
-        count(*) FILTER (WHERE e.status = 'done') AS done_executions,
-        count(*) FILTER (WHERE e.status = 'blocked') AS blocked_executions,
-        avg(extract(epoch FROM (e.ended_at - e.started_at))) FILTER (WHERE e.status = 'done') AS avg_duration_seconds,
-        max(e.started_at) AS last_execution_at
-      FROM executions e
-      JOIN repositories r ON r.id = e.repository_id
-      JOIN projects p ON p.id = r.project_id
-      WHERE e.abe_id = a.id
-        AND ($2::text IS NULL OR p.slug = $2)
-    ) stats ON true
-    LEFT JOIN LATERAL (
-      SELECT count(*) AS approvals_count
-      FROM approvals ap
-      JOIN executions e2 ON e2.id = ap.execution_id
-      JOIN repositories r2 ON r2.id = e2.repository_id
-      JOIN projects p2 ON p2.id = r2.project_id
-      WHERE e2.abe_id = a.id
-        AND ap.decision = 'approved'
-        AND ($2::text IS NULL OR p2.slug = $2)
-    ) appr ON true
-    WHERE ($1::text IS NULL OR o.slug = $1)
-    ORDER BY stats.total_executions DESC NULLS LAST, a.email
-  `,
-    [organizationSlug || null, projectSlug || null],
-  );
-
-  return result.rows
-    .filter((row) => toNumber(row.total_executions) > 0 || toNumber(row.approvals_count) > 0)
-    .map((row) => ({
-      organization_slug: row.organization_slug,
-      abe_email: row.abe_email,
-      display_name: row.display_name,
-      total_executions: toNumber(row.total_executions) ?? 0,
-      done_executions: toNumber(row.done_executions) ?? 0,
-      blocked_executions: toNumber(row.blocked_executions) ?? 0,
-      avg_duration_seconds: toNumber(row.avg_duration_seconds),
-      approvals_count: toNumber(row.approvals_count) ?? 0,
-      last_execution_at: row.last_execution_at,
-    }));
-}
-
-export async function getTimeseries({ projectSlug, days = 30 } = {}) {
-  const clampedDays = Math.min(Math.max(Number.isFinite(days) ? days : 30, 1), 180);
-  const result = await query(
-    `
-    SELECT
-      date_trunc('day', e.started_at) AS day,
-      count(*) AS started,
-      count(*) FILTER (WHERE e.status = 'done') AS done
+      count(*) FILTER (WHERE ${STARTED_IN}) AS started,
+      count(*) FILTER (WHERE ${DONE_IN}) AS done,
+      count(*) FILTER (WHERE ${STARTED_IN} AND e.status = 'done') AS started_and_done,
+      count(DISTINCT e.work_item_id) FILTER (WHERE ${DONE_IN}) AS work_items_done,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY ${DURATION}) FILTER (WHERE ${DONE_IN}) AS median_duration_seconds,
+      percentile_cont(0.9) WITHIN GROUP (ORDER BY ${DURATION}) FILTER (WHERE ${DONE_IN}) AS p90_duration_seconds,
+      count(*) FILTER (WHERE ${OPEN}) AS in_progress,
+      count(*) FILTER (WHERE e.status = 'blocked') AS blocked,
+      count(DISTINCT r.project_id) FILTER (WHERE ${STARTED_IN}) AS active_projects
     FROM executions e
-    JOIN repositories r ON r.id = e.repository_id
-    JOIN projects p ON p.id = r.project_id
-    WHERE e.started_at >= now() - make_interval(days => $1::int)
-      AND ($2::text IS NULL OR p.slug = $2)
-    GROUP BY 1
-    ORDER BY 1
-  `,
-    [clampedDays, projectSlug || null],
+    ${SCOPE_JOIN}
+    WHERE ${SCOPE_WHERE}
+    `,
+    [scope.organizationSlug || null, scope.projectSlug || null, start, end],
+  );
+  const row = result.rows[0];
+  const started = toNumber(row.started);
+  return {
+    started,
+    done: toNumber(row.done),
+    completion_rate: started > 0 ? toNumber(row.started_and_done) / started : null,
+    work_items_done: toNumber(row.work_items_done),
+    median_duration_seconds: toNumber(row.median_duration_seconds),
+    p90_duration_seconds: toNumber(row.p90_duration_seconds),
+    in_progress: toNumber(row.in_progress),
+    blocked: toNumber(row.blocked),
+    active_projects: toNumber(row.active_projects),
+  };
+}
+
+async function scopedGroupCount(table, timeColumn, groupColumns, scope, start, end, extraOrder = '') {
+  const result = await query(
+    `
+    SELECT ${groupColumns.map((c) => `x.${c}`).join(', ')}, count(*)::int AS count
+    FROM ${table} x
+    JOIN executions e ON e.id = x.execution_id
+    ${SCOPE_JOIN}
+    WHERE ${SCOPE_WHERE}
+      AND x.${timeColumn} >= $3 AND x.${timeColumn} < $4
+    GROUP BY ${groupColumns.map((c) => `x.${c}`).join(', ')}
+    ${extraOrder}
+    `,
+    [scope.organizationSlug || null, scope.projectSlug || null, start, end],
+  );
+  return result.rows.map(mapCountRow);
+}
+
+function exceptionsCount(policyRows) {
+  return policyRows.filter((r) => r.decision !== 'allow').reduce((sum, r) => sum + r.count, 0);
+}
+
+export async function getSummary({ organizationSlug, projectSlug, days } = {}) {
+  const scope = { organizationSlug, projectSlug };
+  const w = windowFor(days);
+
+  const [current, previous, policy, previousPolicy, deployments, events, rules] = await Promise.all([
+    executionMetrics(scope, w.start, w.end),
+    executionMetrics(scope, w.previous_start, w.previous_end),
+    scopedGroupCount('policy_decisions', 'created_at', ['decision', 'risk_level'], scope, w.start, w.end, 'ORDER BY 1, 2'),
+    scopedGroupCount('policy_decisions', 'created_at', ['decision'], scope, w.previous_start, w.previous_end),
+    scopedGroupCount('deployments', 'started_at', ['environment', 'status'], scope, w.start, w.end, 'ORDER BY 1, 2'),
+    scopedGroupCount('audit_events', 'occurred_at', ['event_type'], scope, w.start, w.end, 'ORDER BY count DESC'),
+    scopedGroupCount('policy_decisions', 'created_at', ['rule_code', 'decision'], scope, w.start, w.end, 'ORDER BY count DESC'),
+  ]);
+
+  return {
+    window: w,
+    executions: current,
+    previous: {
+      started: previous.started,
+      done: previous.done,
+      completion_rate: previous.completion_rate,
+      median_duration_seconds: previous.median_duration_seconds,
+      policy_exceptions: exceptionsCount(previousPolicy),
+    },
+    policy_decisions: policy,
+    policy_exceptions: exceptionsCount(policy),
+    policy_by_rule: rules.filter((r) => r.decision !== 'allow'),
+    deployments,
+    events_by_type: events,
+  };
+}
+
+const DIMENSIONS = {
+  organization: {
+    select: 'o.slug AS organization_slug, o.name AS organization_name',
+    group: 'o.slug, o.name',
+    keys: ['organization_slug', 'organization_name'],
+  },
+  project: {
+    select: 'o.slug AS organization_slug, p.slug AS project_slug, p.name AS project_name',
+    group: 'o.slug, p.slug, p.name',
+    keys: ['organization_slug', 'project_slug', 'project_name'],
+  },
+  actor: {
+    select: 'o.slug AS organization_slug, a.email AS abe_email, a.display_name AS display_name',
+    group: 'o.slug, a.email, a.display_name',
+    keys: ['organization_slug', 'abe_email', 'display_name'],
+  },
+};
+
+async function getBreakdown(dimension, { organizationSlug, projectSlug, days } = {}) {
+  const dim = DIMENSIONS[dimension];
+  const w = windowFor(days);
+  const params = [organizationSlug || null, projectSlug || null, w.start, w.end];
+  const result = await query(
+    `
+    SELECT
+      ${dim.select},
+      count(*) FILTER (WHERE ${STARTED_IN}) AS total_executions,
+      count(*) FILTER (WHERE ${DONE_IN}) AS done_executions,
+      count(*) FILTER (WHERE e.status = 'blocked') AS blocked_executions,
+      count(*) FILTER (WHERE ${OPEN}) AS in_progress_executions,
+      count(DISTINCT e.work_item_id) FILTER (WHERE ${STARTED_IN}) AS work_items_total,
+      count(DISTINCT e.work_item_id) FILTER (WHERE ${DONE_IN}) AS work_items_done,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY ${DURATION}) FILTER (WHERE ${DONE_IN}) AS median_duration_seconds,
+      percentile_cont(0.9) WITHIN GROUP (ORDER BY ${DURATION}) FILTER (WHERE ${DONE_IN}) AS p90_duration_seconds,
+      max(e.started_at) AS last_execution_at
+    FROM executions e
+    ${SCOPE_JOIN}
+    JOIN actors a ON a.id = e.abe_id
+    WHERE ${SCOPE_WHERE}
+      AND (${STARTED_IN} OR ${DONE_IN} OR ${OPEN} OR e.status = 'blocked')
+    GROUP BY ${dim.group}
+    ORDER BY total_executions DESC
+    `,
+    params,
+  );
+
+  let approvals = new Map();
+  if (dimension === 'actor') {
+    const appr = await query(
+      `
+      SELECT a.email, count(*)::int AS approvals_count
+      FROM approvals ap
+      JOIN executions e ON e.id = ap.execution_id
+      ${SCOPE_JOIN}
+      JOIN actors a ON a.id = ap.actor_id
+      WHERE ${SCOPE_WHERE} AND ap.decision = 'approved' AND ap.created_at >= $3 AND ap.created_at < $4
+      GROUP BY a.email
+      `,
+      params,
+    );
+    approvals = new Map(appr.rows.map((r) => [r.email, r.approvals_count]));
+  }
+
+  return result.rows.map((row) => ({
+    ...Object.fromEntries(dim.keys.map((k) => [k, row[k]])),
+    total_executions: toNumber(row.total_executions) ?? 0,
+    done_executions: toNumber(row.done_executions) ?? 0,
+    blocked_executions: toNumber(row.blocked_executions) ?? 0,
+    in_progress_executions: toNumber(row.in_progress_executions) ?? 0,
+    work_items_total: toNumber(row.work_items_total) ?? 0,
+    work_items_done: toNumber(row.work_items_done) ?? 0,
+    median_duration_seconds: toNumber(row.median_duration_seconds),
+    p90_duration_seconds: toNumber(row.p90_duration_seconds),
+    last_execution_at: row.last_execution_at,
+    ...(dimension === 'actor' ? { approvals_count: approvals.get(row.abe_email) ?? 0 } : {}),
+  }));
+}
+
+export const getByOrganization = (filters) => getBreakdown('organization', filters);
+export const getByProject = (filters) => getBreakdown('project', filters);
+export const getByActor = (filters) => getBreakdown('actor', filters);
+
+export async function getFilterOptions() {
+  const result = await query(`
+    SELECT o.slug AS organization_slug, o.name AS organization_name, p.slug AS project_slug, p.name AS project_name
+    FROM projects p JOIN organizations o ON o.id = p.organization_id
+    ORDER BY o.name, p.name
+  `);
+  return result.rows;
+}
+
+export async function getTimeseries({ organizationSlug, projectSlug, days } = {}) {
+  const w = windowFor(days);
+  const result = await query(
+    `
+    WITH scoped AS (
+      SELECT (e.started_at AT TIME ZONE $5)::date AS started_day,
+             CASE WHEN e.status = 'done' THEN (e.ended_at AT TIME ZONE $5)::date END AS done_day
+      FROM executions e
+      ${SCOPE_JOIN}
+      WHERE ${SCOPE_WHERE}
+        AND (${STARTED_IN} OR ${DONE_IN})
+    ),
+    days AS (
+      SELECT generate_series(($3::timestamptz AT TIME ZONE $5)::date, ($4::timestamptz AT TIME ZONE $5)::date, interval '1 day')::date AS day
+    )
+    SELECT d.day::text AS day,
+      (SELECT count(*) FROM scoped s WHERE s.started_day = d.day) AS started,
+      (SELECT count(*) FROM scoped s WHERE s.done_day = d.day) AS done
+    FROM days d
+    ORDER BY d.day
+    `,
+    [organizationSlug || null, projectSlug || null, w.start, w.end, TIMEZONE],
   );
 
   return result.rows.map((row) => ({
@@ -266,7 +256,7 @@ const TOKEN_TYPE_FIELD = {
   cacheCreation: 'cache_creation_tokens',
 };
 
-async function reducedUsageRows({ organizationSlug, projectSlug } = {}) {
+async function reducedUsageRows({ organizationSlug, projectSlug, start, end } = {}) {
   const result = await query(
     `
     SELECT
@@ -280,7 +270,7 @@ async function reducedUsageRows({ organizationSlug, projectSlug } = {}) {
     JOIN (
       SELECT DISTINCT ON (claude_session_id) claude_session_id, execution_id
         FROM agent_sessions
-       ORDER BY claude_session_id, started_at DESC
+       ORDER BY claude_session_id, last_seen_at DESC
     ) sem ON sem.claude_session_id = om.session_id
     JOIN executions e ON e.id = sem.execution_id
     JOIN actors a ON a.id = e.abe_id
@@ -291,8 +281,10 @@ async function reducedUsageRows({ organizationSlug, projectSlug } = {}) {
     WHERE om.name = ANY($1::text[])
       AND ($2::text IS NULL OR o.slug = $2)
       AND ($3::text IS NULL OR p.slug = $3)
+      AND COALESCE(om.observed_at, om.received_at) >= $4
+      AND COALESCE(om.observed_at, om.received_at) < $5
     `,
-    [USAGE_METRIC_NAMES, organizationSlug || null, projectSlug || null],
+    [USAGE_METRIC_NAMES, organizationSlug || null, projectSlug || null, start, end],
   );
 
   return reduceUsageRows(result.rows);
@@ -376,8 +368,25 @@ function rollupUsage(rows, keyFn, extraFn) {
     .sort((a, b) => b.cost_usd - a.cost_usd);
 }
 
-export async function getUsage({ organizationSlug, projectSlug } = {}) {
-  const { rows, diagnostics } = await reducedUsageRows({ organizationSlug, projectSlug });
+function costOf(rows) {
+  return rows.reduce((sum, row) => sum + (row.name === 'claude_code.cost.usage' ? row.value : 0), 0);
+}
+
+function percentile(values, p) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+export async function getUsage({ organizationSlug, projectSlug, days } = {}) {
+  const w = windowFor(days);
+  const [{ rows, diagnostics }, previous] = await Promise.all([
+    reducedUsageRows({ organizationSlug, projectSlug, start: w.start, end: w.end }),
+    reducedUsageRows({ organizationSlug, projectSlug, start: w.previous_start, end: w.previous_end }),
+  ]);
 
   const byActor = rollupUsage(
     rows,
@@ -405,13 +414,22 @@ export async function getUsage({ organizationSlug, projectSlug } = {}) {
     }),
   );
 
-  const totalCost = rows.reduce((sum, row) => sum + (row.name === 'claude_code.cost.usage' ? row.value : 0), 0);
-  const hasData = rows.length > 0;
+  const totalCost = costOf(rows);
+  const totalTokens = byWorkItem.reduce((sum, r) => sum + r.total_tokens, 0);
+  const costs = byWorkItem.map((r) => r.cost_usd).filter((v) => v > 0);
+  const round = (v) => (v === null ? null : Math.round(v * 1e6) / 1e6);
 
   return {
-    has_data: hasData,
+    has_data: rows.length > 0,
+    window: w,
     diagnostics,
-    total_cost_usd: Math.round(totalCost * 1e6) / 1e6,
+    total_cost_usd: round(totalCost),
+    previous_total_cost_usd: round(costOf(previous.rows)),
+    total_tokens: totalTokens,
+    cost_per_million_tokens: totalTokens > 0 ? round((totalCost / totalTokens) * 1e6) : null,
+    cache_read_share: totalTokens > 0 ? byWorkItem.reduce((s, r) => s + r.cache_read_tokens, 0) / totalTokens : null,
+    median_cost_per_work_item: round(percentile(costs, 0.5)),
+    p90_cost_per_work_item: round(percentile(costs, 0.9)),
     by_actor: byActor,
     by_project: byProject,
     by_organization: byOrganization,

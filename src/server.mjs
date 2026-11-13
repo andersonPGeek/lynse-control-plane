@@ -11,6 +11,7 @@ import {
   getByActor,
   getByOrganization,
   getByProject,
+  getFilterOptions,
   getSummary as getAnalyticsSummary,
   getTimeseries,
   getUsage,
@@ -97,6 +98,19 @@ function matchPath(pathname, expression) {
   return match ? match.groups ?? {} : null;
 }
 
+async function linkSession(client, executionId, body) {
+  await client.query(
+    `INSERT INTO agent_sessions
+      (execution_id, claude_session_id, model, cwd)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (execution_id, claude_session_id) DO UPDATE SET
+       model = COALESCE(EXCLUDED.model, agent_sessions.model),
+       cwd = COALESCE(EXCLUDED.cwd, agent_sessions.cwd),
+       last_seen_at = now()`,
+    [executionId, body.claude_session_id, body.model ?? null, body.cwd ?? null],
+  );
+}
+
 async function startExecution(body, actor) {
   requireFields(body, actor ? ['external_ref', 'repository_slug'] : ['external_ref', 'project_slug', 'repository_slug', 'abe_email']);
   const mode = ['audit', 'enforcement'].includes(body.mode) ? body.mode : config.defaultMode;
@@ -144,20 +158,6 @@ async function startExecution(body, actor) {
       ids = context.rows[0];
     }
 
-    if (body.claude_session_id) {
-      const existing = await client.query(
-        `SELECT e.id, e.status, e.mode, e.started_at, wi.external_ref, wi.title
-           FROM agent_sessions s
-           JOIN executions e ON e.id = s.execution_id
-           JOIN work_items wi ON wi.id = e.work_item_id
-          WHERE s.claude_session_id = $1
-            AND e.status NOT IN ('done','cancelled')
-          ORDER BY e.started_at DESC LIMIT 1`,
-        [body.claude_session_id],
-      );
-      if (existing.rowCount) return { ...existing.rows[0], reused: true };
-    }
-
     let abeId = actor?.id;
     if (!abeId) {
       const abe = await client.query(
@@ -169,6 +169,38 @@ async function startExecution(body, actor) {
         [ids.organization_id, body.abe_email, body.abe_name ?? body.abe_email.split('@')[0]],
       );
       abeId = abe.rows[0].id;
+    }
+
+    // Uma US tem no máximo uma execução aberta por ABE. /lynse-start da mesma US retoma essa
+    // execução, inclusive a partir de outra sessão do Claude Code; uma US diferente nunca
+    // reaproveita a execução de outra.
+    const sameWorkItem = await client.query(
+      `SELECT e.id, e.status, e.mode, e.started_at, wi.external_ref, wi.title
+         FROM executions e
+         JOIN work_items wi ON wi.id = e.work_item_id
+        WHERE wi.project_id = $1 AND wi.external_ref = $2 AND e.abe_id = $3
+          AND e.status NOT IN ('done','cancelled')
+        ORDER BY e.started_at DESC LIMIT 1`,
+      [ids.project_id, body.external_ref, abeId],
+    );
+    if (sameWorkItem.rowCount) {
+      const resumed = sameWorkItem.rows[0];
+      if (body.claude_session_id) await linkSession(client, resumed.id, body);
+      return { ...resumed, reused: true };
+    }
+
+    let otherOpen = [];
+    if (body.claude_session_id) {
+      const open = await client.query(
+        `SELECT DISTINCT e.id, wi.external_ref, e.status, e.started_at
+           FROM agent_sessions s
+           JOIN executions e ON e.id = s.execution_id
+           JOIN work_items wi ON wi.id = e.work_item_id
+          WHERE s.claude_session_id = $1 AND e.status NOT IN ('done','cancelled')
+          ORDER BY e.started_at DESC`,
+        [body.claude_session_id],
+      );
+      otherOpen = open.rows;
     }
 
     const workItem = await client.query(
@@ -211,24 +243,14 @@ async function startExecution(body, actor) {
       ],
     );
 
-    if (body.claude_session_id) {
-      await client.query(
-        `INSERT INTO agent_sessions
-          (execution_id, claude_session_id, model, cwd)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (execution_id, claude_session_id) DO UPDATE SET
-           model = COALESCE(EXCLUDED.model, agent_sessions.model),
-           cwd = COALESCE(EXCLUDED.cwd, agent_sessions.cwd),
-           last_seen_at = now()`,
-        [execution.rows[0].id, body.claude_session_id, body.model ?? null, body.cwd ?? null],
-      );
-    }
+    if (body.claude_session_id) await linkSession(client, execution.rows[0].id, body);
 
     return {
       ...execution.rows[0],
       external_ref: workItem.rows[0].external_ref,
       title: workItem.rows[0].title,
       reused: false,
+      ...(otherOpen.length ? { other_open_executions: otherOpen } : {}),
     };
   });
 }
@@ -688,36 +710,22 @@ async function route(request, response) {
     return send(response, 200, { partialSuccess: {}, accepted });
   }
 
-  if (request.method === 'GET' && pathname === '/api/v1/analytics/summary') {
-    return send(response, 200, await getAnalyticsSummary());
-  }
-  if (request.method === 'GET' && pathname === '/api/v1/analytics/organizations') {
-    return send(response, 200, { items: await getByOrganization() });
-  }
-  if (request.method === 'GET' && pathname === '/api/v1/analytics/projects') {
-    const items = await getByProject({ organizationSlug: url.searchParams.get('organization_slug') });
-    return send(response, 200, { items });
-  }
-  if (request.method === 'GET' && pathname === '/api/v1/analytics/actors') {
-    const items = await getByActor({
-      organizationSlug: url.searchParams.get('organization_slug'),
-      projectSlug: url.searchParams.get('project_slug'),
-    });
-    return send(response, 200, { items });
-  }
-  if (request.method === 'GET' && pathname === '/api/v1/analytics/timeseries') {
-    const items = await getTimeseries({
-      projectSlug: url.searchParams.get('project_slug'),
+  if (request.method === 'GET' && pathname.startsWith('/api/v1/analytics/')) {
+    const filters = {
+      organizationSlug: url.searchParams.get('organization_slug') || null,
+      projectSlug: url.searchParams.get('project_slug') || null,
       days: Number.parseInt(url.searchParams.get('days') ?? '30', 10),
-    });
-    return send(response, 200, { items });
-  }
-  if (request.method === 'GET' && pathname === '/api/v1/analytics/usage') {
-    const usage = await getUsage({
-      organizationSlug: url.searchParams.get('organization_slug'),
-      projectSlug: url.searchParams.get('project_slug'),
-    });
-    return send(response, 200, usage);
+    };
+    const handlers = {
+      '/api/v1/analytics/summary': () => getAnalyticsSummary(filters),
+      '/api/v1/analytics/organizations': async () => ({ items: await getByOrganization(filters) }),
+      '/api/v1/analytics/projects': async () => ({ items: await getByProject(filters) }),
+      '/api/v1/analytics/actors': async () => ({ items: await getByActor(filters) }),
+      '/api/v1/analytics/timeseries': async () => ({ items: await getTimeseries(filters) }),
+      '/api/v1/analytics/usage': () => getUsage(filters),
+      '/api/v1/analytics/filters': async () => ({ items: await getFilterOptions() }),
+    };
+    if (handlers[pathname]) return send(response, 200, await handlers[pathname]());
   }
 
   const statusPath = matchPath(pathname, /^\/api\/v1\/executions\/(?<id>[0-9a-f-]+)\/status$/i);

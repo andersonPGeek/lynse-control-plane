@@ -21,11 +21,12 @@ Base local: `http://localhost:3333`. Todas as rotas, exceto `/health`, exigem `x
 | `POST` | `/api/v1/integrations/deploy` | registra um deploy |
 | `POST` | `/otel/v1/metrics` | recebe OTLP/HTTP JSON de métricas |
 | `POST` | `/otel/v1/logs` | recebe OTLP/HTTP JSON de logs/eventos |
-| `GET` | `/api/v1/analytics/summary` | indicadores globais (execuções, política, deploys, eventos) |
-| `GET` | `/api/v1/analytics/organizations` | indicadores agregados por organização |
-| `GET` | `/api/v1/analytics/projects` | indicadores agregados por projeto (`?organization_slug=`) |
-| `GET` | `/api/v1/analytics/actors` | indicadores agregados por ABE (`?organization_slug=&project_slug=`) |
-| `GET` | `/api/v1/analytics/timeseries` | execuções iniciadas/concluídas por dia (`?project_slug=&days=`) |
+| `GET` | `/api/v1/analytics/summary` | KPIs do período e do período anterior (iniciadas, concluídas, taxa de conclusão, lead time mediano/p90, exceções de política), política por regra, deploys e eventos |
+| `GET` | `/api/v1/analytics/organizations` | comparativo por organização |
+| `GET` | `/api/v1/analytics/projects` | comparativo por projeto |
+| `GET` | `/api/v1/analytics/actors` | comparativo por ABE (inclui aprovações) |
+| `GET` | `/api/v1/analytics/timeseries` | um ponto por dia: iniciadas (pela data de início) e concluídas (pela data de conclusão) |
+| `GET` | `/api/v1/analytics/filters` | organizações e projetos disponíveis para os filtros |
 | `GET` | `/dashboard` | página HTML com os gráficos e tabelas de indicadores (sem `x-api-key`; a chave é informada na própria página) |
 | `POST` | `/api/v1/admin/api-keys` | cria um ABE (se necessário) e uma chave pessoal para ele — **requer a chave administrativa** |
 | `GET` | `/api/v1/admin/api-keys` | lista as chaves emitidas (sem expor o valor) — **requer a chave administrativa** |
@@ -151,6 +152,16 @@ curl http://localhost:3333/api/v1/analytics/actors?project_slug=agilhes-process-
 curl http://localhost:3333/api/v1/analytics/timeseries?days=30 -H 'x-api-key: change-me-local'
 ```
 
-Todas as rotas de analytics são somente leitura, agregam sobre `executions`/`policy_decisions`/`deployments`/`audit_events`/`approvals` e aceitam os mesmos filtros por slug usados no restante da API. O dashboard em `/dashboard` consome exatamente essas rotas.
+Todas as rotas de analytics são somente leitura e aceitam os **mesmos três filtros**: `organization_slug`, `project_slug` e `days` (1 a 365, padrão 30). O período anterior usado nas variações é a janela de mesmo tamanho imediatamente antes.
+
+Regras de contagem:
+- **Iniciadas**: `started_at` dentro do período.
+- **Concluídas**: status `done` com `ended_at` dentro do período (não pela data de início).
+- **Em andamento** e **bloqueadas**: retrato do momento, sem filtro de período (mas com filtro de organização/projeto).
+- **Lead time**: mediana e p90 de `ended_at - started_at` das concluídas no período (tempo de relógio). Não há mais média aritmética.
+- **Política, deploys, eventos**: pela data do registro (`created_at`, `started_at`, `occurred_at`).
+- **Consumo**: pela data da medição OTLP (`observed_at`, ou `received_at` se ausente). Dias da série são calculados no fuso `LYNSE_TIMEZONE` (padrão `America/Sao_Paulo`).
+
+O dashboard em `/dashboard` consome exatamente essas rotas.
 
 O contrato completo e importável está em [`openapi.yaml`](openapi.yaml).
