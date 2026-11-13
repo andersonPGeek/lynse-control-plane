@@ -270,7 +270,7 @@ async function reducedUsageRows({ organizationSlug, projectSlug } = {}) {
   const result = await query(
     `
     SELECT
-      om.name, om.value, om.temporality, om.attributes,
+      om.name, om.value, om.temporality, om.attributes, om.observed_at, om.session_id,
       e.id AS execution_id,
       a.email AS abe_email, a.display_name,
       wi.id AS work_item_id, wi.external_ref, wi.title AS work_item_title,
@@ -295,25 +295,41 @@ async function reducedUsageRows({ organizationSlug, projectSlug } = {}) {
     [USAGE_METRIC_NAMES, organizationSlug || null, projectSlug || null],
   );
 
-  // Cada session.id pode ter várias linhas brutas (uma por coleta OTLP). Reduz para um único
-  // valor por (execução, métrica, modelo, tipo) respeitando a temporalidade: DELTA soma,
-  // CUMULATIVE fica com o maior valor observado — mesma regra usada em otel.mjs.
-  const perExecution = new Map();
-  for (const row of result.rows) {
-    const model = row.attributes?.model ?? 'desconhecido';
-    const type = row.attributes?.type ?? null;
-    const key = [row.execution_id, row.name, model, type].join('|');
+  return reduceUsageRows(result.rows);
+}
+
+export function reduceUsageRows(rawRows) {
+  // 1) Descarta linhas duplicadas (mesma série, mesmo instante, mesmo valor): um lote OTLP reenviado
+  //    após timeout (ex.: servidor acordando) seria somado duas vezes em métricas DELTA.
+  // 2) Reduz cada série (todos os atributos, não só modelo/tipo) respeitando a temporalidade:
+  //    DELTA soma, CUMULATIVE fica com o maior valor observado. As séries são somadas depois.
+  const seen = new Set();
+  const series = new Map();
+  const diagnostics = { raw_rows: rawRows.length, duplicate_rows_removed: 0, delta_rows: 0, cumulative_rows: 0 };
+  for (const row of rawRows) {
+    const attributes = row.attributes ?? {};
+    const attributesKey = JSON.stringify(Object.keys(attributes).sort().map((k) => [k, attributes[k]]));
     const value = Number(row.value ?? 0);
-    const existing = perExecution.get(key);
+    const rowKey = [row.session_id, row.name, attributesKey, row.observed_at?.toISOString?.() ?? row.observed_at, value].join('|');
+    if (seen.has(rowKey)) { diagnostics.duplicate_rows_removed += 1; continue; }
+    seen.add(rowKey);
+
+    const isDelta = Number(row.temporality) === 1;
+    if (isDelta) diagnostics.delta_rows += 1; else diagnostics.cumulative_rows += 1;
+
+    const model = attributes.model ?? 'desconhecido';
+    const type = attributes.type ?? null;
+    const key = [row.execution_id, row.session_id, row.name, attributesKey].join('|');
+    const existing = series.get(key);
     if (!existing) {
-      perExecution.set(key, { ...row, model, type, value });
-    } else if (Number(row.temporality) === 1) {
+      series.set(key, { ...row, model, type, value });
+    } else if (isDelta) {
       existing.value += value;
     } else {
       existing.value = Math.max(existing.value, value);
     }
   }
-  return [...perExecution.values()];
+  return { rows: [...series.values()], diagnostics };
 }
 
 function emptyUsageBucket() {
@@ -361,7 +377,7 @@ function rollupUsage(rows, keyFn, extraFn) {
 }
 
 export async function getUsage({ organizationSlug, projectSlug } = {}) {
-  const rows = await reducedUsageRows({ organizationSlug, projectSlug });
+  const { rows, diagnostics } = await reducedUsageRows({ organizationSlug, projectSlug });
 
   const byActor = rollupUsage(
     rows,
@@ -394,6 +410,7 @@ export async function getUsage({ organizationSlug, projectSlug } = {}) {
 
   return {
     has_data: hasData,
+    diagnostics,
     total_cost_usd: Math.round(totalCost * 1e6) / 1e6,
     by_actor: byActor,
     by_project: byProject,
