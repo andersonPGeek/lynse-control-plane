@@ -302,6 +302,34 @@
     .donut { grid-template-columns: 1fr; justify-items: center; }
     .donut-legend { width: 100%; }
   }
+  .modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 0; border: 1px solid var(--border); border-radius: 18px; background: var(--card); color: var(--text); box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+  .modal::backdrop { background: rgba(10,10,12,.55); }
+  @media (prefers-reduced-motion: no-preference) { .modal[open] { animation: pop .16s ease-out; } }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+  .modal-head { display: flex; align-items: center; gap: 10px; padding: 18px 20px 0; }
+  .modal-head h2 { font-size: 17px; }
+  .modal-head svg { width: 22px; height: 22px; color: var(--bad); flex: none; }
+  .modal-body { padding: 14px 20px 20px; }
+  .modal-form { display: flex; flex-direction: column; gap: 14px; }
+  .modal-form .field select { min-height: 40px; background: var(--card-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font: inherit; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+  .hint { font-size: 12px; color: var(--text-3); margin: 0; }
+  .btn-danger { background: #c0392b; }
+  .btn-danger:hover { filter: brightness(1.08); }
+  .btn-danger[disabled] { opacity: .45; cursor: not-allowed; filter: none; }
+  .btn-sm { min-height: 32px; padding: 4px 12px; font-size: 12px; }
+  .danger-text { color: var(--bad); }
+  .danger-text:hover { border-color: var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+  .danger-box { font-size: 13px; line-height: 1.5; color: var(--text); background: color-mix(in srgb, var(--bad) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); border-left: 4px solid var(--bad); border-radius: 10px; padding: 10px 12px; }
+  .impact-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 14px; font-size: 13px; color: var(--text-2); }
+  .impact-list li { display: flex; gap: 6px; align-items: baseline; }
+  .impact-list strong { color: var(--text); min-width: 32px; text-align: right; }
+  .impact-group { display: flex; flex-direction: column; gap: 6px; }
+  .impact-label { font-size: 12px; font-weight: 650; color: var(--text-2); }
+  .impact-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--card-2); border: 1px solid var(--border); color: var(--text-2); }
+  .key-row { display: flex; gap: 8px; }
+  .key-box { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
 </style>
 
 <div class="viz-root" data-theme="light">
@@ -470,7 +498,7 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideTip(); closeNav(); } });
 
   // ---------- Estado ----------
-  const state = { apiUrl: '', apiKey: '', options: [], filters: {}, page: 'inicio', data: null, sort: {}, cache: new Map() };
+  const state = { apiUrl: '', apiKey: '', role: 'abe', me: null, options: [], filters: {}, page: 'inicio', data: null, sort: {}, cache: new Map() };
   const PERIODS = [['7', 'Últimos 7 dias'], ['30', 'Últimos 30 dias'], ['90', 'Últimos 90 dias'], ['365', 'Últimos 12 meses'], ['3650', 'Todo o período']];
   const periodText = (days) => (Number(days) >= 3650 ? 'todo o período' : 'últimos ' + days + ' dias');
 
@@ -500,8 +528,12 @@
   function closeNav() { $('shell').classList.remove('nav-open'); $('menuBtn').setAttribute('aria-expanded', 'false'); }
 
   // ---------- API ----------
-  async function api(path) {
-    const res = await fetch(state.apiUrl + path, { headers: { 'x-api-key': state.apiKey } });
+  async function api(path, opts) {
+    const res = await fetch(state.apiUrl + path, {
+      method: (opts && opts.method) || 'GET',
+      headers: { 'x-api-key': state.apiKey, ...(opts && opts.body ? { 'content-type': 'application/json' } : {}) },
+      body: opts && opts.body ? JSON.stringify(opts.body) : undefined,
+    });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       const err = new Error(res.status === 401 ? 'chave de acesso inválida' : (body.error || 'HTTP ' + res.status));
@@ -526,13 +558,14 @@
   // ---------- Componentes ----------
   const deferred = [];
   const later = (node, draw) => { deferred.push(() => draw(node)); return node; };
-  function card({ title, sub, info, link, body, cls }) {
+  function card({ title, sub, info, link, actions, body, cls }) {
     const head = el('div', { class: 'card-head' }, [
       el('h2', {}, title),
       info ? withTip(el('button', { class: 'info t', type: 'button', 'aria-label': 'Sobre: ' + title }, svgFrom(ICON.info)), info) : null,
       sub ? el('span', { class: 'card-sub' }, sub) : null,
       el('span', { class: 'spacer' }),
       link ? el('a', { class: 'card-link', href: link.href }, [link.label, icon('arrow')]) : null,
+      actions || null,
     ]);
     return el('section', { class: 'card ' + (cls || '') }, [head, ...[].concat(body)]);
   }
@@ -681,6 +714,7 @@
       return sort.dir === 'asc' ? c : -c;
     });
     const thead = el('tr', {}, columns.map((c) => {
+      if (c.nosort) return el('th', { scope: 'col', class: c.num ? 'num' : null }, c.label);
       const active = c.key === sort.key;
       const btn = el('button', { class: 'sort-btn', type: 'button' }, [c.label, svgFrom(ICON.sort)]);
       btn.addEventListener('click', () => { state.sort[id] = { key: c.key, dir: active && sort.dir === 'desc' ? 'asc' : 'desc' }; renderPage(); });
@@ -752,6 +786,181 @@
     return '#/' + page + (qs ? '?' + qs : '');
   }
 
+  // ---------- Diálogos ----------
+  function openDialog({ title, danger, build }) {
+    const dlg = el('dialog', { class: 'modal' + (danger ? ' danger' : ''), 'aria-labelledby': 'dlgTitle' });
+    const close = () => { dlg.close(); };
+    dlg.addEventListener('close', () => dlg.remove());
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+    const titleNode = el('h2', { id: 'dlgTitle' }, title);
+    const content = el('div', { class: 'modal-body' });
+    dlg.append(el('div', { class: 'modal-head' }, [danger ? svgFrom(ICON.bad) : null, titleNode]), content);
+    root.appendChild(dlg);
+    const api_ = { dlg, content, close, setTitle: (t) => { titleNode.textContent = t; } };
+    build(api_);
+    dlg.showModal();
+    const first = dlg.querySelector('[autofocus]') || dlg.querySelector('input, select, button');
+    if (first) first.focus();
+    return api_;
+  }
+  const formField = (id, label, control, hint) => el('div', { class: 'field' }, [el('label', { for: id }, label), control, hint ? el('small', { class: 'hint' }, hint) : null]);
+
+  function openCreateActor(registry) {
+    openDialog({ title: 'Novo ABE', build: ({ content, close, setTitle }) => {
+      const orgs = registry.organizations;
+      const email = el('input', { id: 'na-email', type: 'email', required: true, autocomplete: 'off', autofocus: true, placeholder: 'nome@empresa.com' });
+      const name = el('input', { id: 'na-name', type: 'text', autocomplete: 'off', placeholder: 'Como aparece no painel' });
+      const org = el('select', { id: 'na-org', class: 't' }, orgs.map((o) => el('option', { value: o.slug }, o.name)));
+      const msg = el('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+      const submit = el('button', { class: 'btn t', type: 'submit' }, 'Criar ABE e gerar chave');
+      const form = el('form', { class: 'modal-form', novalidate: true }, [
+        el('p', { class: 'sub' }, 'O ABE recebe uma chave de acesso pessoal. Ela será mostrada uma única vez, logo após a criação.'),
+        formField('na-email', 'E-mail', email),
+        formField('na-name', 'Nome (opcional)', name),
+        orgs.length > 1 ? formField('na-org', 'Organização', org) : null,
+        msg,
+        el('div', { class: 'modal-actions' }, [el('button', { class: 'btn-ghost t', type: 'button' }, 'Cancelar'), submit]),
+      ]);
+      form.querySelector('.btn-ghost').addEventListener('click', close);
+      email.addEventListener('input', () => {
+        const exists = registry.items.some((a) => a.email.toLowerCase() === email.value.trim().toLowerCase());
+        msg.className = 'status';
+        msg.textContent = exists ? 'Este e-mail já é um ABE. Será gerada uma nova chave para ele, sem apagar as anteriores.' : '';
+      });
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const value = email.value.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) { msg.className = 'status err'; msg.textContent = 'Informe um e-mail válido.'; email.focus(); return; }
+        submit.disabled = true;
+        msg.className = 'status'; msg.textContent = 'Criando…';
+        try {
+          const created = await api('/api/v1/admin/api-keys', { method: 'POST', body: {
+            email: value, display_name: name.value.trim() || undefined, organization_slug: (orgs.length > 1 ? org.value : orgs[0]?.slug) || undefined,
+          } });
+          state.cache.clear();
+          setTitle('ABE criado');
+          const keyBox = el('input', { id: 'na-key', class: 'key-box', type: 'text', readonly: true, value: created.api_key });
+          const copy = el('button', { class: 'btn-ghost t', type: 'button' }, 'Copiar');
+          const copied = el('span', { class: 'status ok', role: 'status', 'aria-live': 'polite' });
+          copy.addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText(created.api_key); copied.textContent = 'Copiada.'; }
+            catch { keyBox.select(); copied.textContent = 'Selecionada — use Ctrl+C.'; }
+          });
+          const done = el('button', { class: 'btn t', type: 'button' }, 'Concluir');
+          done.addEventListener('click', () => { close(); loadPage(); });
+          content.replaceChildren(
+            el('p', { class: 'sub' }, [el('strong', {}, created.display_name || created.email), ' (' + created.email + ') foi cadastrado.']),
+            el('div', { class: 'note' }, 'Esta chave aparece uma única vez e não pode ser recuperada depois. Envie ao ABE por um canal seguro; ele vai colá-la quando o setup pedir a LYNSE_API_KEY.'),
+            formField('na-key', 'Chave de acesso', el('div', { class: 'key-row' }, [keyBox, copy])),
+            copied,
+            el('div', { class: 'modal-actions' }, [done]),
+          );
+          keyBox.focus();
+          keyBox.select();
+        } catch (err) {
+          submit.disabled = false;
+          msg.className = 'status err';
+          msg.textContent = 'Não foi possível criar: ' + err.message;
+        }
+      });
+      content.replaceChildren(form);
+    } });
+  }
+
+  function openDeleteActor(a) {
+    openDialog({ title: 'Excluir ' + (a.display_name || a.email) + '?', danger: true, build: async ({ content, close }) => {
+      content.replaceChildren(el('div', { class: 'skeleton', style: 'width:80%;margin:8px 0' }), el('div', { class: 'skeleton', style: 'width:60%' }));
+      let data;
+      try {
+        data = await api('/api/v1/admin/actors/' + a.id + '/impact');
+      } catch (err) {
+        content.replaceChildren(el('p', { class: 'status err' }, 'Não foi possível calcular o impacto: ' + err.message), el('div', { class: 'modal-actions' }, el('button', { class: 'btn-ghost t', type: 'button' }, 'Fechar')));
+        content.querySelector('button').addEventListener('click', close);
+        return;
+      }
+      const im = data.impact;
+      const items = [
+        [im.api_keys, 'chave(s) de acesso — o ABE perde o acesso imediatamente'],
+        [im.executions, 'execução(ões) de User Story'],
+        [im.agent_sessions, 'sessão(ões) do Claude Code'],
+        [im.audit_events, 'evento(s) de auditoria'],
+        [im.policy_decisions, 'decisão(ões) da Policy Engine'],
+        [im.approvals, 'aprovação(ões) de gates'],
+        [im.pull_requests, 'pull request(s) registrado(s)'],
+        [im.deployments, 'deploy(s) registrado(s)'],
+        [im.telemetry, 'registro(s) de telemetria de tokens e custo'],
+      ].filter(([n]) => n > 0);
+      const list = (label, arr, fmt) => (arr.length ? el('div', { class: 'impact-group' }, [
+        el('div', { class: 'impact-label' }, label),
+        el('div', { class: 'impact-chips' }, [...arr.slice(0, 12).map((x) => el('span', { class: 'chip' }, fmt(x))), arr.length > 12 ? el('span', { class: 'chip' }, '+' + (arr.length - 12)) : null]),
+      ]) : null);
+      const confirm = el('input', { id: 'del-confirm', type: 'text', autocomplete: 'off', spellcheck: 'false', autofocus: true });
+      const del = el('button', { class: 'btn btn-danger t', type: 'submit', disabled: true }, 'Excluir permanentemente');
+      const cancel = el('button', { class: 'btn-ghost t', type: 'button' }, 'Cancelar');
+      const msg = el('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+      cancel.addEventListener('click', close);
+      confirm.addEventListener('input', () => { del.disabled = confirm.value.trim().toLowerCase() !== a.email.toLowerCase(); });
+      const form = el('form', { class: 'modal-form', role: 'alertdialog', 'aria-describedby': 'del-warning' }, [
+        el('div', { class: 'danger-box', id: 'del-warning' }, [
+          el('strong', {}, 'Esta ação é permanente e não pode ser desfeita.'),
+          ' Tudo abaixo será apagado do Control Plane e deixará de aparecer nos indicadores, inclusive no histórico.',
+        ]),
+        items.length ? el('ul', { class: 'impact-list' }, items.map(([n, label]) => el('li', {}, [el('strong', { class: 'num' }, fmtInt(n)), ' ', label]))) : el('p', { class: 'sub' }, 'Este ABE não tem registros além do próprio cadastro.'),
+        list('User Stories que deixam de existir', im.work_items, (w) => w.external_ref),
+        list('Projetos que ficam vazios e serão removidos', im.projects, (p) => p.name),
+        el('p', { class: 'hint' }, 'Execuções, User Stories, sessões e projetos que também têm atividade de outros ABEs são preservados.'),
+        formField('del-confirm', 'Para confirmar, digite o e-mail do ABE: ' + a.email, confirm),
+        msg,
+        el('div', { class: 'modal-actions' }, [cancel, del]),
+      ]);
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (del.disabled) return;
+        del.disabled = true;
+        cancel.disabled = true;
+        msg.className = 'status'; msg.textContent = 'Excluindo…';
+        try {
+          await api('/api/v1/admin/actors/' + a.id, { method: 'DELETE', body: { confirm_email: confirm.value.trim() } });
+          state.cache.clear();
+          state.options = (await api('/api/v1/analytics/filters')).items;
+          close();
+          loadPage().then(() => setStatus((a.display_name || a.email) + ' foi excluído', 'ok'));
+        } catch (err) {
+          cancel.disabled = false;
+          del.disabled = false;
+          msg.className = 'status err'; msg.textContent = 'Não foi possível excluir: ' + err.message;
+        }
+      });
+      content.replaceChildren(form);
+      confirm.focus();
+    } });
+  }
+
+  function manageActorsCard(d) {
+    if (state.role !== 'admin' || !d.registry) {
+      return card({ title: 'ABEs cadastrados', body: el('p', { class: 'sub' }, 'Para cadastrar ou excluir ABEs, entre com a chave administrativa do Control Plane.') });
+    }
+    const reg = d.registry;
+    const newBtn = el('button', { class: 'btn t', type: 'button' }, [svgFrom('<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'), 'Novo ABE']);
+    newBtn.addEventListener('click', () => openCreateActor(reg));
+    const cols = [
+      { key: 'display_name', label: 'ABE', sortValue: (r) => (r.display_name || r.email).toLowerCase(), cell: (r) => who(r.display_name || r.email, r.email) },
+      { key: 'organization_name', label: 'Organização' },
+      { key: 'active_keys', label: 'Chaves ativas', num: true, cell: (r) => fmtInt(r.active_keys) },
+      { key: 'executions_total', label: 'Execuções', num: true, cell: (r) => fmtInt(r.executions_total) },
+      { key: 'executions_open', label: 'Em aberto', num: true, cell: (r) => fmtInt(r.executions_open) },
+      { key: 'last_activity_at', label: 'Última atividade', sortValue: (r) => (r.last_activity_at ? Date.parse(r.last_activity_at) : null), cell: (r) => fmtDate(r.last_activity_at) },
+      { key: 'actions', label: 'Ações', nosort: true, cell: (r) => {
+        const b = el('button', { class: 'btn-ghost btn-sm danger-text t', type: 'button', 'aria-label': 'Excluir ' + (r.display_name || r.email) }, 'Excluir');
+        b.addEventListener('click', () => openDeleteActor(r));
+        return b;
+      } },
+    ];
+    return card({ title: 'ABEs cadastrados', sub: reg.items.length + ' no total', actions: newBtn, body: [
+      reg.items.length ? sortableTable('registry', 'Todos os ABEs, com ou sem atividade no período. Excluir apaga o ABE e todo o histórico dele.', cols, reg.items, { key: 'display_name', dir: 'asc' }) : emptyNode('Nenhum ABE cadastrado.'),
+    ] });
+  }
+
   // ---------- Telas ----------
   const POLICY_HELP = '<strong>Policy Engine</strong><br>Antes de cada prompt e de cada uso de ferramenta, as regras rodam <em>na máquina do ABE</em> e decidem: permitir, pedir confirmação ou bloquear. Só a decisão (regra, risco, hash) vai ao servidor, nunca o texto.';
   const PAGES = {
@@ -788,10 +997,11 @@
       render: renderConsumo,
     },
     equipe: {
-      title: 'Equipe', sub: 'Comparativo de entrega e lead time por ABE, projeto ou organização.', icon: 'equipe',
+      title: 'Equipe', sub: 'ABEs cadastrados e comparativo de entrega e lead time.', icon: 'equipe',
       filters: ['org', 'project', 'days', 'group'], defaults: { days: '30', group: 'actors' },
-      load: (f) => Promise.all([fetchCached('/api/v1/analytics/actors', f), fetchCached('/api/v1/analytics/projects', f), fetchCached('/api/v1/analytics/organizations', f)])
-        .then(([actors, projects, organizations]) => ({ actors: actors.items, projects: projects.items, organizations: organizations.items })),
+      load: (f) => Promise.all([fetchCached('/api/v1/analytics/actors', f), fetchCached('/api/v1/analytics/projects', f), fetchCached('/api/v1/analytics/organizations', f),
+        state.role === 'admin' ? api('/api/v1/admin/actors') : Promise.resolve(null)])
+        .then(([actors, projects, organizations, registry]) => ({ actors: actors.items, projects: projects.items, organizations: organizations.items, registry })),
       render: renderEquipe,
     },
     atividade: {
@@ -1083,6 +1293,10 @@
   }
 
   function renderEquipe(d, f) {
+    return [manageActorsCard(d), ...renderEquipeAnalytics(d, f)];
+  }
+
+  function renderEquipeAnalytics(d, f) {
     const group = f.group || 'actors';
     const rows = d[group] || [];
     const groupName = { actors: 'ABE', projects: 'projeto', organizations: 'organização' }[group];
@@ -1200,7 +1414,7 @@
       return el('div', { class: 'filter' }, [el('label', { for: id }, def.label), control]);
     });
     const note = PAGES[page].filters.includes('days') && Number(f.days) < 3650 ? el('div', { class: 'filter-note' }, 'Variações comparadas com os ' + f.days + ' dias anteriores') : null;
-    $('filterbar').replaceChildren(...fields, note);
+    $('filterbar').replaceChildren(...fields, ...(note ? [note] : []));
   }
   function changeFilter(key, value) {
     const page = state.page;
@@ -1307,6 +1521,8 @@
     setLoginStatus('Conectando…');
     try {
       state.options = (await api('/api/v1/analytics/filters')).items;
+      state.me = await api('/api/v1/me').catch(() => ({ role: 'abe' }));
+      state.role = state.me.role;
       lsSet(LS.conn, JSON.stringify({ apiUrl: state.apiUrl, apiKey: state.apiKey }));
       setLoginStatus('');
       $('login').hidden = true;
@@ -1325,6 +1541,8 @@
     state.cache.clear();
     state.data = null;
     state.filters = {};
+    state.role = 'abe';
+    state.me = null;
     $('apiKey').value = '';
     showLogin(message);
   }

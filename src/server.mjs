@@ -17,6 +17,7 @@ import {
   getTimeseries,
   getUsage,
 } from './analytics.mjs';
+import { deleteActor, getActorImpact, listActors } from './actors-admin.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_PATH = resolve(__dirname, '../public/dashboard.html');
@@ -36,7 +37,7 @@ class HttpError extends Error {
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
   'access-control-allow-headers': 'content-type, x-api-key',
   'access-control-max-age': '600',
 };
@@ -664,6 +665,29 @@ async function route(request, response) {
   const actor = isAdmin ? null : await resolveActor(request.headers['x-api-key']);
   if (!isAdmin && !actor) throw new HttpError(401, 'API key inválida');
 
+  if (request.method === 'GET' && pathname === '/api/v1/me') {
+    return send(response, 200, isAdmin
+      ? { role: 'admin' }
+      : { role: 'abe', email: actor.email, display_name: actor.display_name, organization_slug: actor.organization_slug });
+  }
+  if (pathname.startsWith('/api/v1/admin/') && !isAdmin) throw new HttpError(403, 'Requer a chave administrativa');
+  if (request.method === 'GET' && pathname === '/api/v1/admin/actors') {
+    return send(response, 200, await listActors());
+  }
+  const actorImpactPath = matchPath(pathname, /^\/api\/v1\/admin\/actors\/(?<id>[0-9a-f-]{36})\/impact$/i);
+  if (request.method === 'GET' && actorImpactPath) {
+    const result = await getActorImpact(actorImpactPath.id);
+    if (!result) throw new HttpError(404, 'ABE não encontrado');
+    return send(response, 200, result);
+  }
+  const actorPath = matchPath(pathname, /^\/api\/v1\/admin\/actors\/(?<id>[0-9a-f-]{36})$/i);
+  if (request.method === 'DELETE' && actorPath) {
+    const body = await readJson(request);
+    const result = await deleteActor(actorPath.id, body.confirm_email);
+    if (result.status === 'not_found') throw new HttpError(404, 'ABE não encontrado');
+    if (result.status === 'confirmation_mismatch') throw new HttpError(400, 'O e-mail de confirmação não confere com o do ABE');
+    return send(response, 200, result);
+  }
   if (request.method === 'POST' && pathname === '/api/v1/admin/api-keys') {
     if (!isAdmin) throw new HttpError(403, 'Requer a chave administrativa');
     return send(response, 201, await createApiKey(await readJson(request)));

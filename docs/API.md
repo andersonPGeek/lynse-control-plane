@@ -32,6 +32,10 @@ Base local: `http://localhost:3333`. Todas as rotas, exceto `/health`, exigem `x
 | `POST` | `/api/v1/admin/api-keys` | cria um ABE (se necessário) e uma chave pessoal para ele — **requer a chave administrativa** |
 | `GET` | `/api/v1/admin/api-keys` | lista as chaves emitidas (sem expor o valor) — **requer a chave administrativa** |
 | `POST` | `/api/v1/admin/api-keys/{id}/revoke` | revoga uma chave — **requer a chave administrativa** |
+| `GET` | `/api/v1/me` | papel da chave usada (`admin` ou `abe`) |
+| `GET` | `/api/v1/admin/actors` | todos os ABEs com chaves ativas, execuções e última atividade — **requer a chave administrativa** |
+| `GET` | `/api/v1/admin/actors/{id}/impact` | prévia do que será apagado ao excluir o ABE — **requer a chave administrativa** |
+| `DELETE` | `/api/v1/admin/actors/{id}` | exclui o ABE e todo o histórico dele; exige `{"confirm_email": "<e-mail do ABE>"}` no corpo. Dados compartilhados com outros ABEs são preservados — **requer a chave administrativa** |
 
 ## Abrir execução
 
