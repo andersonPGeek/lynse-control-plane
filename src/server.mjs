@@ -13,19 +13,39 @@ import {
   getByProject,
   getExecutions,
   getFilterOptions,
+  getPromptAnalytics,
   getSummary as getAnalyticsSummary,
   getTimeseries,
   getUsage,
 } from './analytics.mjs';
 import { deleteActor, getActorImpact, listActors } from './actors-admin.mjs';
+import {
+  ACTIVE_SQL,
+  adjustExecution,
+  advanceStageForGate,
+  approvalEvidence,
+  assignTurns,
+  autoResolve,
+  classifyTurnManually,
+  completeExecution,
+  getContext,
+  getExecutionTurns,
+  listAdjustments,
+  listInconsistencies,
+  recordInconsistency,
+  resolveInconsistency,
+  upsertTurn,
+} from './process.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_PATH = resolve(__dirname, '../public/dashboard.html');
 
 const EXECUTION_STATUSES = new Set([
   'briefing', 'planning', 'building', 'verifying', 'release', 'observing',
-  'done', 'blocked', 'cancelled',
+  'done', 'blocked', 'cancelled', 'inconsistent',
 ]);
+const STAGES = ['briefing', 'planning', 'building', 'verifying', 'release', 'observing'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class HttpError extends Error {
   constructor(status, message, details) {
@@ -173,37 +193,73 @@ async function startExecution(body, actor) {
       abeId = abe.rows[0].id;
     }
 
-    // Uma US tem no máximo uma execução aberta por ABE. /lynse-start da mesma US retoma essa
-    // execução, inclusive a partir de outra sessão do Claude Code; uma US diferente nunca
-    // reaproveita a execução de outra.
+    // Serializa os inícios do mesmo ABE: duas sessões ao mesmo tempo não criam duplicidade.
+    await client.query('SELECT id FROM actors WHERE id = $1 FOR UPDATE', [abeId]);
+
+    // A mesma US do mesmo ABE é sempre retomada (inclusive de outra sessão do Claude Code ou depois
+    // de ter sido marcada como inconsistente). Uma US diferente nunca reaproveita a execução de outra.
     const sameWorkItem = await client.query(
-      `SELECT e.id, e.status, e.mode, e.started_at, wi.external_ref, wi.title
+      `SELECT e.id, e.status, e.previous_status, e.mode, e.started_at, wi.external_ref, wi.title
          FROM executions e
          JOIN work_items wi ON wi.id = e.work_item_id
         WHERE wi.project_id = $1 AND wi.external_ref = $2 AND e.abe_id = $3
           AND e.status NOT IN ('done','cancelled')
-        ORDER BY e.started_at DESC LIMIT 1`,
+        ORDER BY (e.status <> 'inconsistent') DESC, e.started_at DESC LIMIT 1`,
       [ids.project_id, body.external_ref, abeId],
     );
-    if (sameWorkItem.rowCount) {
-      const resumed = sameWorkItem.rows[0];
+    const resumable = sameWorkItem.rows[0] ?? null;
+
+    // Uma US ativa por ABE. Se outra ficou aberta, ela vira "inconsistente" e a nova segue:
+    // o trabalho do ABE nunca é bloqueado; o agente avisa e a tratativa é manual.
+    const others = await client.query(
+      `SELECT e.id, e.status, e.started_at, wi.external_ref, wi.title, p.slug AS project_slug
+         FROM executions e
+         JOIN work_items wi ON wi.id = e.work_item_id
+         JOIN repositories r ON r.id = e.repository_id
+         JOIN projects p ON p.id = r.project_id
+        WHERE e.abe_id = $1 AND e.${ACTIVE_SQL}
+          AND ($2::uuid IS NULL OR e.id <> $2)`,
+      [abeId, resumable?.id ?? null],
+    );
+    const previous = [];
+    for (const other of others.rows) {
+      await client.query(
+        `UPDATE executions SET previous_status = status, status = 'inconsistent', close_reason = 'aberta_ao_iniciar_outra' WHERE id = $1`,
+        [other.id],
+      );
+      await recordInconsistency(client, {
+        actorId: abeId, executionId: other.id, type: 'US_ABERTA_AO_INICIAR_OUTRA', dedupeKey: other.id,
+        details: { status_anterior: other.status, nova_us: body.external_ref },
+      });
+      previous.push({ id: other.id, external_ref: other.external_ref, title: other.title, project_slug: other.project_slug, status: other.status, started_at: other.started_at });
+    }
+    const notice = previous.length ? {
+      previous_marked_inconsistent: previous,
+      agent_instruction: `A US ${previous.map((p) => p.external_ref).join(', ')} ainda estava aberta e foi registrada como inconsistente (o trabalho segue normalmente). `
+        + 'Avise o ABE em uma linha e pergunte se ela já foi concluída. Se ele confirmar, rode /lynse-finish com o id dela; se não, apenas siga — a tratativa será manual.',
+    } : {};
+
+    if (resumable) {
+      let resumed = resumable;
+      if (resumable.status === 'inconsistent') {
+        const back = STAGES.includes(resumable.previous_status) ? resumable.previous_status : 'building';
+        resumed = { ...resumable, ...(await client.query(
+          `UPDATE executions SET status = $2, previous_status = 'inconsistent', close_reason = NULL WHERE id = $1 RETURNING id, status, mode, started_at`,
+          [resumable.id, back],
+        )).rows[0] };
+        await autoResolve(client, { executionId: resumable.id, types: ['US_ABERTA_AO_INICIAR_OUTRA'], note: 'US retomada pelo ABE' });
+      }
       if (body.claude_session_id) await linkSession(client, resumed.id, body);
-      return { ...resumed, reused: true };
+      const { previous_status: _ignored, ...out } = resumed;
+      return { ...out, reused: true, ...notice };
     }
 
-    let otherOpen = [];
-    if (body.claude_session_id) {
-      const open = await client.query(
-        `SELECT DISTINCT e.id, wi.external_ref, e.status, e.started_at
-           FROM agent_sessions s
-           JOIN executions e ON e.id = s.execution_id
-           JOIN work_items wi ON wi.id = e.work_item_id
-          WHERE s.claude_session_id = $1 AND e.status NOT IN ('done','cancelled')
-          ORDER BY e.started_at DESC`,
-        [body.claude_session_id],
-      );
-      otherOpen = open.rows;
-    }
+    const reopenOf = await client.query(
+      `SELECT e.id FROM executions e JOIN work_items wi ON wi.id = e.work_item_id
+        WHERE wi.project_id = $1 AND wi.external_ref = $2 AND e.abe_id = $3 AND e.status = 'done'
+        ORDER BY e.ended_at DESC NULLS LAST LIMIT 1`,
+      [ids.project_id, body.external_ref, abeId],
+    );
 
     const workItem = await client.query(
       `INSERT INTO work_items
@@ -232,8 +288,8 @@ async function startExecution(body, actor) {
 
     const execution = await client.query(
       `INSERT INTO executions
-         (work_item_id, repository_id, abe_id, mode, status, branch_name, context_snapshot)
-       VALUES ($1, $2, $3, $4, 'planning', $5, $6::jsonb)
+         (work_item_id, repository_id, abe_id, mode, status, branch_name, context_snapshot, reopen_of)
+       VALUES ($1, $2, $3, $4, 'planning', $5, $6::jsonb, $7)
        RETURNING id, status, mode, started_at`,
       [
         workItem.rows[0].id,
@@ -242,6 +298,7 @@ async function startExecution(body, actor) {
         mode,
         body.branch_name ?? null,
         JSON.stringify(body.context_snapshot ?? {}),
+        reopenOf.rows[0]?.id ?? null,
       ],
     );
 
@@ -252,7 +309,11 @@ async function startExecution(body, actor) {
       external_ref: workItem.rows[0].external_ref,
       title: workItem.rows[0].title,
       reused: false,
-      ...(otherOpen.length ? { other_open_executions: otherOpen } : {}),
+      ...(reopenOf.rowCount ? {
+        reopened: true,
+        reopen_note: `A US ${body.external_ref} já tinha sido concluída antes; esta nova execução conta como reabertura (retrabalho pós-entrega).`,
+      } : {}),
+      ...notice,
     };
   });
 }
@@ -368,13 +429,28 @@ async function createApproval(body, actor) {
         [body.execution_id, abeEmail],
       );
   if (!approver.rowCount) throw new HttpError(404, 'ABE não encontrado para esta execução');
-  const result = await query(
-    `INSERT INTO approvals (execution_id, actor_id, gate, decision, rationale)
-     VALUES ($1,$2,$3,$4,$5)
-     RETURNING *`,
-    [body.execution_id, approver.rows[0].id, body.gate, body.decision, body.rationale ?? null],
-  );
-  return result.rows[0];
+  const approverId = approver.rows[0].id;
+  return transaction(async (client) => {
+    const evidence = await approvalEvidence(client, {
+      executionId: body.execution_id, actorId: approverId, gate: body.gate, turnKey: body.turn_key ?? null,
+      evidence: body.evidence === 'manual' && actor ? 'comando' : body.evidence,
+    });
+    if (evidence.promptTurnId) {
+      const existing = await client.query(
+        'SELECT * FROM approvals WHERE execution_id = $1 AND gate = $2 AND prompt_turn_id = $3 LIMIT 1',
+        [body.execution_id, body.gate, evidence.promptTurnId],
+      );
+      if (existing.rowCount) return { ...existing.rows[0], duplicate: true };
+    }
+    const result = await client.query(
+      `INSERT INTO approvals (execution_id, actor_id, gate, decision, rationale, prompt_turn_id, evidence)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING *`,
+      [body.execution_id, approverId, body.gate, body.decision, body.rationale ? String(body.rationale).slice(0, 500) : null, evidence.promptTurnId, evidence.evidence],
+    );
+    const executionStatus = body.decision === 'approved' ? await advanceStageForGate(client, body.execution_id, body.gate) : null;
+    return { ...result.rows[0], execution_status: executionStatus };
+  });
 }
 
 async function createApiKey(body) {
@@ -483,43 +559,33 @@ async function registerDeployment(body) {
   });
 }
 
+// Mudança de etapa vinda do kit. Nunca falha por causa do processo: em execução já encerrada ou
+// inconsistente a mudança é ignorada (e informada), em vez de reabrir algo sem querer.
 async function updateExecutionStatus(id, body) {
   requireFields(body, ['status']);
-  if (!EXECUTION_STATUSES.has(body.status)) throw new HttpError(400, 'Status inválido');
+  if (body.status === 'done') return completeExecution(id);
+  if (![...STAGES, 'blocked', 'cancelled'].includes(body.status)) throw new HttpError(400, 'Status inválido');
   return transaction(async (client) => {
+    const current = await client.query('SELECT * FROM executions WHERE id = $1 FOR UPDATE', [id]);
+    if (!current.rowCount) throw new HttpError(404, 'Execução não encontrada');
+    if (['done', 'cancelled', 'inconsistent'].includes(current.rows[0].status)) {
+      return { ...current.rows[0], ignored: true, note: `Execução está ${current.rows[0].status}; a etapa não foi alterada.` };
+    }
     const result = await client.query(
       `UPDATE executions SET status = $2,
-         ended_at = CASE WHEN $2 IN ('done','cancelled') THEN COALESCE(ended_at,now()) ELSE ended_at END
+         ended_at = CASE WHEN $2 = 'cancelled' THEN COALESCE(ended_at, now()) ELSE ended_at END
        WHERE id = $1 RETURNING *`,
       [id, body.status],
     );
-    if (!result.rowCount) throw new HttpError(404, 'Execução não encontrada');
-    if (body.status === 'done' || body.status === 'cancelled') {
+    if (body.status === 'cancelled') {
       await client.query(
-        `UPDATE work_items SET status = $2
-           WHERE id = (SELECT work_item_id FROM executions WHERE id = $1)`,
-        [id, body.status],
+        `UPDATE work_items SET status = 'cancelled' WHERE id = (SELECT work_item_id FROM executions WHERE id = $1)`,
+        [id],
       );
+      await autoResolve(client, { executionId: id, types: ['US_PARADA', 'US_ABERTA_AO_INICIAR_OUTRA'], note: 'US cancelada pelo ABE' });
     }
     return result.rows[0];
   });
-}
-
-async function completeExecution(id) {
-  const gates = await query(
-    `SELECT
-       EXISTS (SELECT 1 FROM approvals WHERE execution_id = $1 AND gate = 'plan' AND decision = 'approved') AS plan,
-       EXISTS (SELECT 1 FROM approvals WHERE execution_id = $1 AND gate = 'pr' AND decision = 'approved') AS pr,
-       EXISTS (SELECT 1 FROM approvals WHERE execution_id = $1 AND gate = 'deploy' AND decision = 'approved') AS deploy,
-       EXISTS (SELECT 1 FROM deployments WHERE execution_id = $1 AND environment = 'prod' AND status = 'succeeded') AS production`,
-    [id],
-  );
-  const evidence = gates.rows[0];
-  const missing = Object.entries(evidence).filter(([, present]) => !present).map(([name]) => name);
-  if (missing.length) {
-    throw new HttpError(409, `Execução não pode ser encerrada. Evidências ausentes: ${missing.join(', ')}`, evidence);
-  }
-  return updateExecutionStatus(id, { status: 'done' });
 }
 
 async function getExecution(id) {
@@ -670,7 +736,39 @@ async function route(request, response) {
       ? { role: 'admin' }
       : { role: 'abe', email: actor.email, display_name: actor.display_name, organization_slug: actor.organization_slug });
   }
+  if (request.method === 'GET' && pathname === '/api/v1/me/context') {
+    return send(response, 200, await getContext(actor, {
+      repositoryHash: url.searchParams.get('repository_hash'),
+      repositorySlug: url.searchParams.get('repository_slug'),
+    }));
+  }
+
+  const filters = {
+    organizationSlug: url.searchParams.get('organization_slug') || null,
+    projectSlug: url.searchParams.get('project_slug') || null,
+    abeEmail: url.searchParams.get('abe_email') || null,
+    days: Number.parseInt(url.searchParams.get('days') ?? '30', 10),
+  };
+
   if (pathname.startsWith('/api/v1/admin/') && !isAdmin) throw new HttpError(403, 'Requer a chave administrativa');
+  if (request.method === 'GET' && pathname === '/api/v1/admin/adjustments') {
+    return send(response, 200, await listAdjustments(filters));
+  }
+  const adjustPath = matchPath(pathname, /^\/api\/v1\/admin\/executions\/(?<id>[0-9a-f-]{36})\/adjust$/i);
+  if (request.method === 'POST' && adjustPath) {
+    return send(response, 200, await adjustExecution(adjustPath.id, await readJson(request)));
+  }
+  const classifyPath = matchPath(pathname, /^\/api\/v1\/admin\/turns\/(?<id>[0-9a-f-]{36})\/classify$/i);
+  if (request.method === 'POST' && classifyPath) {
+    return send(response, 200, await classifyTurnManually(classifyPath.id, await readJson(request)));
+  }
+  if (request.method === 'POST' && pathname === '/api/v1/admin/turns/assign') {
+    return send(response, 200, await assignTurns(await readJson(request)));
+  }
+  const resolvePath = matchPath(pathname, /^\/api\/v1\/admin\/inconsistencies\/(?<id>[0-9a-f-]{36})\/resolve$/i);
+  if (request.method === 'POST' && resolvePath) {
+    return send(response, 200, await resolveInconsistency(resolvePath.id, await readJson(request)));
+  }
   if (request.method === 'GET' && pathname === '/api/v1/admin/actors') {
     return send(response, 200, await listActors());
   }
@@ -708,6 +806,16 @@ async function route(request, response) {
   if (request.method === 'GET' && pathname === '/api/v1/executions') {
     return send(response, 200, await listExecutions(url));
   }
+  if (request.method === 'POST' && pathname === '/api/v1/turns') {
+    return send(response, 201, await upsertTurn(await readJson(request), actor));
+  }
+  if (request.method === 'GET' && pathname === '/api/v1/inconsistencies') {
+    return send(response, 200, await listInconsistencies({
+      ...filters,
+      status: ['open', 'treated', 'all'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'open',
+      type: url.searchParams.get('type') || null,
+    }, actor));
+  }
   if (request.method === 'POST' && pathname === '/api/v1/events') {
     return send(response, 202, await registerEvent(await readJson(request)));
   }
@@ -736,11 +844,6 @@ async function route(request, response) {
   }
 
   if (request.method === 'GET' && pathname.startsWith('/api/v1/analytics/')) {
-    const filters = {
-      organizationSlug: url.searchParams.get('organization_slug') || null,
-      projectSlug: url.searchParams.get('project_slug') || null,
-      days: Number.parseInt(url.searchParams.get('days') ?? '30', 10),
-    };
     const handlers = {
       '/api/v1/analytics/summary': () => getAnalyticsSummary(filters),
       '/api/v1/analytics/organizations': async () => ({ items: await getByOrganization(filters) }),
@@ -748,7 +851,8 @@ async function route(request, response) {
       '/api/v1/analytics/actors': async () => ({ items: await getByActor(filters) }),
       '/api/v1/analytics/timeseries': async () => ({ items: await getTimeseries(filters) }),
       '/api/v1/analytics/usage': () => getUsage(filters),
-      '/api/v1/analytics/filters': async () => ({ items: await getFilterOptions() }),
+      '/api/v1/analytics/filters': () => getFilterOptions(),
+      '/api/v1/analytics/prompts': () => getPromptAnalytics(filters),
       '/api/v1/analytics/executions': () => getExecutions(filters),
     };
     if (handlers[pathname]) return send(response, 200, await handlers[pathname]());
@@ -761,6 +865,10 @@ async function route(request, response) {
   const completePath = matchPath(pathname, /^\/api\/v1\/executions\/(?<id>[0-9a-f-]+)\/complete$/i);
   if (request.method === 'POST' && completePath) {
     return send(response, 200, await completeExecution(completePath.id));
+  }
+  const turnsPath = matchPath(pathname, /^\/api\/v1\/executions\/(?<id>[0-9a-f-]{36})\/turns$/i);
+  if (request.method === 'GET' && turnsPath) {
+    return send(response, 200, { items: await getExecutionTurns(turnsPath.id) });
   }
   const summaryPath = matchPath(pathname, /^\/api\/v1\/executions\/(?<id>[0-9a-f-]+)\/summary$/i);
   if (request.method === 'GET' && summaryPath) {
@@ -780,7 +888,7 @@ const server = http.createServer((request, response) => {
     return response.end();
   }
   route(request, response).catch((error) => {
-    const status = error.status ?? (error.code === '23503' ? 409 : 500);
+    const status = error.status ?? (['23503', '23505'].includes(error.code) ? 409 : ['22P02', '22007', '22008'].includes(error.code) ? 400 : 500);
     console.error(JSON.stringify({
       level: status >= 500 ? 'error' : 'warn',
       message: error.message,

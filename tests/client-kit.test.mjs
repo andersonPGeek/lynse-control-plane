@@ -115,7 +115,9 @@ test('modo audit registra would_block sem bloquear', async () => {
       }),
     });
     assert.equal(result.code, 0, result.stderr);
-    assert.equal(result.stdout, '');
+    const out = JSON.parse(result.stdout || '{}');
+    assert.equal(out.decision, undefined, 'em audit o prompt não é bloqueado');
+    assert.match(out.hookSpecificOutput?.additionalContext ?? '', /\[lynse:/, 'só um lembrete de classificação');
     const record = ctx.requests.find((r) => r.path === '/api/v1/policies/record').body;
     assert.equal(record.decision, 'would_block');
     assert.equal(record.mode, 'audit');

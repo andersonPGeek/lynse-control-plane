@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { loadLynseEnv } from './lynse-env.mjs';
 import { readState, saveState } from './lynse-state.mjs';
+import { readSession } from './lynse-turns.mjs';
 
 loadLynseEnv();
 
@@ -103,35 +104,43 @@ async function status() {
   return api(`/api/v1/executions/${state.execution_id}/summary`);
 }
 
-async function approve(rawArguments) {
-  const { state, remote } = await requireState();
-  const [gate, ...words] = rawArguments.trim().split(/\s+/);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// /lynse-approve <gate> [justificativa]: o próprio comando digitado pelo ABE é a evidência.
+// Quando o hook registrou o prompt atual, a aprovação fica ligada a ele.
+async function approve(sessionId, rawArguments) {
+  const { state } = await requireState();
+  const [gate, ...words] = String(rawArguments ?? '').trim().split(/\s+/);
   if (!['plan', 'pr', 'deploy', 'rollback', 'close'].includes(gate)) {
     throw new Error('Gate esperado: plan, pr, deploy, rollback ou close.');
   }
-  const approval = await api('/api/v1/approvals', {
+  const session = sessionId ? await readSession(sessionId) : null;
+  return api('/api/v1/approvals', {
     method: 'POST',
     body: {
       execution_id: state.execution_id,
       abe_email: process.env.LYNSE_ABE_EMAIL || undefined,
       gate,
       decision: 'approved',
+      evidence: 'comando',
+      turn_key: session?.turn?.turn_key,
       rationale: words.join(' ') || `Aprovado via /lynse-approve ${gate}`,
     },
   });
-  const nextStage = { plan: 'building', pr: 'release', deploy: 'release', rollback: 'blocked' }[gate];
-  if (!nextStage) return approval;
-  const execution = await api(`/api/v1/executions/${state.execution_id}/status`, {
-    method: 'PATCH',
-    body: { status: nextStage },
-  });
-  return { approval, execution_status: execution.status };
 }
 
-async function finish() {
-  const { state, remote } = await requireState();
-  const result = await api(`/api/v1/executions/${state.execution_id}/complete`, { method: 'POST', body: {} });
-  await saveState(identityFor(remote), { ...state, active: false, ended_at: result.ended_at });
+// /lynse-finish [id]: sem argumento conclui a US ativa deste repositório; com o id de uma execução
+// (ex.: a que foi marcada como inconsistente ao iniciar outra) conclui aquela. Nunca é recusado:
+// evidência faltante vira inconsistência no Control Plane.
+async function finish(target) {
+  const remote = git(['remote', 'get-url', 'origin']);
+  const state = await readState(identityFor(remote));
+  const id = UUID.test(String(target ?? '').trim()) ? String(target).trim() : state?.execution_id;
+  if (!id) throw new Error('Nenhuma execução ativa neste repositório. Informe o id da execução: /lynse-finish <id>.');
+  const result = await api(`/api/v1/executions/${id}/complete`, { method: 'POST', body: {} });
+  if (state && state.execution_id === id) {
+    await saveState(identityFor(remote), { ...state, active: false, ended_at: result.ended_at });
+  }
   return result;
 }
 
@@ -149,8 +158,10 @@ try {
   let result;
   if (command === 'start') result = await start(args[0], args[1]);
   else if (command === 'status') result = await status();
-  else if (command === 'approve') result = await approve(args.join(' '));
-  else if (command === 'finish') result = await finish();
+  else if (command === 'approve') result = UUID.test(args[0] ?? '') || /^[0-9a-f-]{20,}$/i.test(args[0] ?? '')
+    ? await approve(args[0], args.slice(1).join(' '))
+    : await approve(null, args.join(' '));
+  else if (command === 'finish') result = await finish(args[0]);
   else if (command === 'stage') result = await setStage(args[0]);
   else throw new Error('Comando esperado: start, status, approve, stage ou finish.');
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

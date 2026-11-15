@@ -8,7 +8,7 @@ export async function listActors() {
         o.slug AS organization_slug, o.name AS organization_name,
         (SELECT count(*) FROM api_keys k WHERE k.actor_id = a.id AND k.revoked_at IS NULL)::int AS active_keys,
         (SELECT count(*) FROM executions e WHERE e.abe_id = a.id)::int AS executions_total,
-        (SELECT count(*) FROM executions e WHERE e.abe_id = a.id AND e.status NOT IN ('done','cancelled','blocked'))::int AS executions_open,
+        (SELECT count(*) FROM executions e WHERE e.abe_id = a.id AND e.status NOT IN ('done','cancelled','blocked','inconsistent'))::int AS executions_open,
         GREATEST(
           (SELECT max(s.last_seen_at) FROM agent_sessions s JOIN executions e ON e.id = s.execution_id WHERE e.abe_id = a.id),
           (SELECT max(e.started_at) FROM executions e WHERE e.abe_id = a.id)
@@ -80,7 +80,9 @@ async function computeImpact(client, actorId) {
        (SELECT count(*) FROM pull_requests WHERE execution_id = ANY($1::uuid[]))::int AS pull_requests,
        (SELECT count(*) FROM deployments WHERE execution_id = ANY($1::uuid[]))::int AS deployments,
        (SELECT count(*) FROM otel_measurements WHERE session_id = ANY($3::text[]))::int AS telemetry,
-       (SELECT count(*) FROM api_keys WHERE actor_id = $2)::int AS api_keys`,
+       (SELECT count(*) FROM api_keys WHERE actor_id = $2)::int AS api_keys,
+       (SELECT count(*) FROM prompt_turns WHERE actor_id = $2)::int AS prompt_turns,
+       (SELECT count(*) FROM inconsistencies WHERE actor_id = $2)::int AS inconsistencies`,
     [execIds, actorId, sessions],
   )).rows[0];
 

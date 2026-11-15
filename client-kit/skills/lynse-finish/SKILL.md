@@ -1,11 +1,12 @@
 ---
 name: lynse-finish
-description: Encerra a execução Lynse depois do deploy e da observação pós-produção.
-disable-model-invocation: true
+description: Conclui a execução Lynse de uma User Story. Use somente quando o ABE confirmar, na mensagem mais recente dele, que a US está concluída ou pedir para encerrá-la. Aceita opcionalmente o id de uma execução anterior.
+argument-hint: "[id da execução]"
 ---
 
-## Execução encerrada
+## Execução concluída
 
-!`node "${CLAUDE_SKILL_DIR}/../../hooks/lynse-cli.mjs" finish`
+!`node "${CLAUDE_SKILL_DIR}/../../hooks/lynse-cli.mjs" finish "$0"`
 
-Apresente o resultado final, as evidências e qualquer risco residual. A história só pode ser declarada concluída se os critérios de aceite e a validação pós-deploy estiverem registrados.
+Apresente em poucas linhas o resultado: critérios atendidos, evidências e riscos residuais.
+Se a resposta trouxer `missing_evidence`, siga o `agent_instruction`: diga em uma linha quais aprovações faltaram (ficou registrado para tratativa manual) e siga. Não peça para refazer nada.

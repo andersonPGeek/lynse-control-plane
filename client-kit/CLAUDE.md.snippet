@@ -1,26 +1,38 @@
+<!-- lynse:inicio — seção mantida pelo instalador da Operação Lynse; edições aqui são substituídas ao reinstalar -->
 ## Operação Lynse
 
-Você atua ao lado de um **ABE — AI Build Engineer**. O ABE governa intenção, decisões, riscos e evidências; o agente executa análise, implementação, verificação e preparação da entrega.
+Você atua ao lado de um **ABE — AI Build Engineer**. O ABE governa intenção, decisões, riscos e evidências; você executa análise, implementação, verificação e preparação da entrega.
 
-### Fluxo obrigatório
+### Regra de ouro
 
-1. Inicie cada User Story com `/lynse-start <US-ID>`.
-2. Leia a história, os critérios e os documentos aplicáveis em `SPEC/`, se existirem no repositório.
-3. Explore o código antes de propor novos componentes.
-4. Apresente um plano rastreável aos critérios de aceite e aguarde o gate `plan`.
-5. Implemente em mudanças pequenas; teste depois de cada bloco relevante.
-6. Faça self-review independente do diff contra história, SPEC, segurança e Definition of Done.
-7. Apresente evidências e aguarde o gate `pr` antes de publicar o Pull Request.
-8. Aguarde o gate `deploy` antes de qualquer ação em produção.
-9. Após deploy, valide saúde técnica e critérios de aceite; só então use `/lynse-finish`.
+O processo **nunca** atrapalha o trabalho do ABE. Se algo do Lynse falhar, faltar ou estiver ambíguo, pergunte **uma vez** e siga atendendo o pedido. O Control Plane registra a inconsistência para tratativa manual.
+
+### Protocolo (você conduz, o ABE só confirma)
+
+1. **Início**: quando o ABE indicar a User Story, ou quando o pedido envolver alteração de código e não houver US ativa, pergunte o ID e rode `/lynse-start <ID>`. Nunca invente o ID. Se o pedido parecer de outra US que não a ativa, confirme com o ABE antes de trocar.
+2. **Plano**: apresente o plano e pergunte se o ABE aprova. Aprovações valem em linguagem natural ("pode seguir", "aprovado").
+3. **Aprovações**: na resposta à mensagem em que o ABE aprovou, inclua `[lynse: aprovado plan]` (ou `pr`, `deploy`). Só use o marcador quando a aprovação estiver na mensagem mais recente do ABE.
+4. **Classificação**: toda resposta que alterou código termina com uma linha de classificação:
+   - `[lynse: nova_funcionalidade]`: algo que ainda não existia na US;
+   - `[lynse: melhoria]`: o ABE pediu algo a mais ou mudou o requisito;
+   - `[lynse: correcao <origem>]`: algo estava errado. A origem é `abe_apontou`, `teste_build_falhou`, `revisao_pr` ou `pos_deploy`;
+   - `[lynse: sem_codigo]`: a resposta não alterou código.
+   Se não souber se é melhoria ou correção, pergunte ao ABE em uma linha.
+5. **Conclusão**: quando a US estiver pronta, pergunte se pode concluí-la. Com a confirmação do ABE, rode `/lynse-finish`.
+
+### Fluxo de engenharia
+
+- Leia a história, os critérios e os documentos aplicáveis em `SPEC/`, se existirem.
+- Explore o código antes de propor novos componentes; implemente em mudanças pequenas e teste depois de cada bloco relevante.
+- Faça self-review do diff contra história, SPEC, segurança e Definition of Done antes do PR.
 
 ### Regras de segurança
 
 - Nunca exponha segredos, credenciais, PII ou chaves em prompts, logs ou commits.
 - Nunca contorne uma decisão do Policy Engine.
-- Operações destrutivas, alterações de histórico Git e produção exigem o gate indicado.
-- Na dúvida sobre requisito, arquitetura ou risco, pare e peça uma decisão ao ABE.
+- Operações destrutivas, alterações de histórico Git e produção exigem aprovação explícita do ABE.
 
 ### Pacote de evidências para o ABE
 
-Sempre resuma: critérios atendidos, decisões, arquivos alterados, testes e resultados, cobertura quando disponível, achados de segurança, riscos residuais, plano de rollback e status do ambiente.
+Sempre resuma: critérios atendidos, decisões, arquivos alterados, testes e resultados, achados de segurança, riscos residuais e plano de rollback.
+<!-- lynse:fim -->

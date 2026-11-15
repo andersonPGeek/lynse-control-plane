@@ -36,6 +36,25 @@ Base local: `http://localhost:3333`. Todas as rotas, exceto `/health`, exigem `x
 | `GET` | `/api/v1/admin/actors` | todos os ABEs com chaves ativas, execuções e última atividade — **requer a chave administrativa** |
 | `GET` | `/api/v1/admin/actors/{id}/impact` | prévia do que será apagado ao excluir o ABE — **requer a chave administrativa** |
 | `DELETE` | `/api/v1/admin/actors/{id}` | exclui o ABE e todo o histórico dele; exige `{"confirm_email": "<e-mail do ABE>"}` no corpo. Dados compartilhados com outros ABEs são preservados — **requer a chave administrativa** |
+| `GET` | `/api/v1/me/context` | situação do ABE para o início de sessão: US ativa (e se é deste repositório, via `repository_hash`), se está parada, inconsistências abertas |
+| `POST` | `/api/v1/turns` | registra/atualiza um prompt do ABE (turno): tokens, linhas incluídas/removidas, arquivos, falhas e classificação. Só números; idempotente por `turn_key` |
+| `GET` | `/api/v1/executions/{id}/turns` | prompts de uma execução, em ordem |
+| `GET` | `/api/v1/inconsistencies` | inconsistências (`status=open\|treated\|all`, `type`, mais os filtros de analytics). Com chave pessoal, só as do próprio ABE |
+| `GET` | `/api/v1/analytics/prompts` | prompts por US, tokens e linhas por prompt, retrabalho (correção x melhoria), por ABE, por US e por dia |
+| `POST` | `/api/v1/admin/executions/{id}/adjust` | ajuste manual: `complete`, `cancel`, `reopen`, `add_approval`, `set_ended_at`, `merge`. Exige `reason` — **requer a chave administrativa** |
+| `POST` | `/api/v1/admin/turns/{id}/classify` | reclassifica um prompt (`kind`, `fix_origin`, `reason`); prevalece sobre a do agente — **requer a chave administrativa** |
+| `POST` | `/api/v1/admin/turns/assign` | vincula prompts de uma sessão sem US (`claude_session_id`) a uma execução — **requer a chave administrativa** |
+| `POST` | `/api/v1/admin/inconsistencies/{id}/resolve` | marca como `resolved` ou `justified`, com `reason` — **requer a chave administrativa** |
+| `GET` | `/api/v1/admin/adjustments` | histórico de ajustes manuais (quem, quando, motivo, antes/depois) — **requer a chave administrativa** |
+
+## Guardião do processo: registrar, nunca travar
+
+Nenhuma regra de processo impede o ABE de trabalhar. Quando o processo não é seguido, o Control Plane registra uma **inconsistência** e segue; o tratamento é manual, na tela "Inconsistências". As únicas recusas que continuam existindo são as da Policy Engine (segurança), e só em modo enforcement.
+
+- **Uma US ativa por ABE**, garantida por índice único no banco. Ao iniciar outra US, a anterior vira `inconsistent` (`US_ABERTA_AO_INICIAR_OUTRA`) e a resposta do `/executions/start` traz `previous_marked_inconsistent` e `agent_instruction`, para o agente avisar o ABE. Retomar a mesma US a reativa.
+- **Conclusão nunca é recusada.** Sem as aprovações de `plan` e `pr`, a US é concluída e fica a inconsistência `CONCLUSAO_SEM_EVIDENCIA`. O deploy não é exigido até a integração com o CI/CD dos clientes.
+- **Detecções automáticas**: US aberta há mais de `LYNSE_STALE_HOURS` (padrão 12h), código alterado em sessão sem US, prompts com código sem classificação, classificação "sem código" em prompt que alterou linhas, aprovação em linguagem natural sem o prompt do ABE correspondente.
+- **Aprovação em linguagem natural**: o agente escreve `[lynse: aprovado plan]` na resposta à mensagem em que o ABE aprovou; o hook envia `evidence: "turno_abe"` e o `turn_key` daquele prompt. Só vale se for o prompt mais recente da sessão.
 
 ## Abrir execução
 

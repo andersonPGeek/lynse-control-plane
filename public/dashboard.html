@@ -330,6 +330,39 @@
   .chip { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--card-2); border: 1px solid var(--border); color: var(--text-2); }
   .key-row { display: flex; gap: 8px; }
   .key-box { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
+  .st.warn { color: var(--warn); }
+  .kind { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 650; border: 1px solid var(--border); background: var(--card-2); color: var(--text-2); white-space: nowrap; }
+  .kind::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--kc, var(--neutral-fill)); }
+  .wip { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 14px; border: 1px dashed var(--brand); background: var(--brand-soft); font-size: 13px; color: var(--text-2); }
+  .wip svg { width: 20px; height: 20px; color: var(--brand-text); flex: none; margin-top: 1px; }
+  .wip strong { display: block; color: var(--text); font-size: 14px; margin-bottom: 2px; }
+  .row-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  .pill-count { display: inline-flex; min-width: 20px; justify-content: center; padding: 0 6px; border-radius: 99px; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--warn-fill) 22%, transparent); color: var(--warn); margin-left: 6px; }
+  .sev { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .sev.high { color: var(--bad); }
+  .sev.medium { color: var(--warn); }
+  .sev.low { color: var(--text-3); }
+  .lines-add { color: var(--good); }
+  .lines-del { color: var(--bad); }
+  .modal.wide { width: min(980px, calc(100vw - 32px)); }
+  .modal-form textarea, .modal-form .field select, .inline-form select, .inline-form input { min-height: 40px; background: var(--card-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font: inherit; }
+  .modal-form textarea { min-height: 72px; resize: vertical; }
+  .inline-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end; padding: 12px; margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-2); }
+  .inline-form .field { min-width: 0; }
+  .inline-form .modal-actions { grid-column: 1 / -1; margin: 0; }
+  .one-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .one-head .spacer { flex: 1; }
+  .one-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+  .one-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-2); }
+  .one-item .stat-label { font-size: 12px; color: var(--text-2); }
+  .one-item .stat-value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .print-only { display: none; }
+  @media print {
+    .sidebar, .scrim, .pb-actions, .menu-btn, #filterbar, .no-print, .skip { display: none !important; }
+    .shell, .main { display: block !important; margin: 0 !important; padding: 0 !important; }
+    .card { break-inside: avoid; box-shadow: none !important; }
+    .print-only { display: block; }
+  }
 </style>
 
 <div class="viz-root" data-theme="light">
@@ -447,6 +480,10 @@
     consumo: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
     equipe: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17.5 14.5c2.2.2 3.6 1.7 4 4"/>',
     atividade: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
+    prompts: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
+    inconsistencias: '<path d="M12 3.5L21 19.5H3z"/><path d="M12 10v4.5M12 17v.1"/>',
+    print: '<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
+    tool: '<path d="M14.5 6.5a4 4 0 00-5.4 5.1L3 17.7 6.3 21l6.1-6.1a4 4 0 005.1-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/>',
     collapse: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M16 10l-2 2 2 2"/>',
@@ -498,7 +535,12 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideTip(); closeNav(); } });
 
   // ---------- Estado ----------
-  const state = { apiUrl: '', apiKey: '', role: 'abe', me: null, options: [], filters: {}, page: 'inicio', data: null, sort: {}, cache: new Map() };
+  const state = { apiUrl: '', apiKey: '', role: 'abe', me: null, options: [], actors: [], filters: {}, page: 'inicio', data: null, sort: {}, cache: new Map() };
+  const fmtNum1 = (v) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? '—' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
+  function applyFilterOptions(res) {
+    state.options = Array.isArray(res) ? res : (res.items || []);
+    state.actors = Array.isArray(res) ? [] : (res.actors || []);
+  }
   const PERIODS = [['7', 'Últimos 7 dias'], ['30', 'Últimos 30 dias'], ['90', 'Últimos 90 dias'], ['365', 'Últimos 12 meses'], ['3650', 'Todo o período']];
   const periodText = (days) => (Number(days) >= 3650 ? 'todo o período' : 'últimos ' + days + ' dias');
 
@@ -546,6 +588,7 @@
     const p = new URLSearchParams();
     if (f.org) p.set('organization_slug', f.org);
     if (f.project) p.set('project_slug', f.project);
+    if (f.abe) p.set('abe_email', f.abe);
     p.set('days', f.days || '30');
     return '?' + p.toString();
   }
@@ -729,9 +772,10 @@
   const STATUS = {
     briefing: ['Briefing', 'open'], planning: ['Planejando', 'open'], building: ['Implementando', 'open'], verifying: ['Verificando', 'open'],
     release: ['Liberação', 'open'], observing: ['Observando', 'open'], done: ['Concluída', 'done'], blocked: ['Bloqueada', 'blocked'], cancelled: ['Cancelada', 'neutral'],
+    inconsistent: ['Inconsistente', 'warn'],
   };
   const statusChip = (s) => { const [label, cls] = STATUS[s] || [s, 'neutral']; return el('span', { class: 'st ' + cls }, label); };
-  const isOpen = (e) => !['done', 'cancelled', 'blocked'].includes(e.status);
+  const isOpen = (e) => !['done', 'cancelled', 'blocked', 'inconsistent'].includes(e.status);
   const ageMs = (e) => (e.status === 'done' && e.ended_at ? Date.parse(e.ended_at) : Date.now()) - Date.parse(e.started_at);
   const RULES = [
     { code: 'SEC-SECRET-01', name: 'Credencial ou chave no texto', detects: 'Chave privada, chave de acesso de nuvem, senha ou token num prompt ou comando', action: 'Bloqueia', risk: 'Crítico' },
@@ -787,8 +831,8 @@
   }
 
   // ---------- Diálogos ----------
-  function openDialog({ title, danger, build }) {
-    const dlg = el('dialog', { class: 'modal' + (danger ? ' danger' : ''), 'aria-labelledby': 'dlgTitle' });
+  function openDialog({ title, danger, wide, build }) {
+    const dlg = el('dialog', { class: 'modal' + (danger ? ' danger' : '') + (wide ? ' wide' : ''), 'aria-labelledby': 'dlgTitle' });
     const close = () => { dlg.close(); };
     dlg.addEventListener('close', () => dlg.remove());
     dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
@@ -889,6 +933,8 @@
         [im.pull_requests, 'pull request(s) registrado(s)'],
         [im.deployments, 'deploy(s) registrado(s)'],
         [im.telemetry, 'registro(s) de telemetria de tokens e custo'],
+        [im.prompt_turns, 'prompt(s) medido(s): tokens, linhas e classificação'],
+        [im.inconsistencies, 'inconsistência(s) e o histórico de tratativas'],
       ].filter(([n]) => n > 0);
       const list = (label, arr, fmt) => (arr.length ? el('div', { class: 'impact-group' }, [
         el('div', { class: 'impact-label' }, label),
@@ -922,7 +968,7 @@
         try {
           await api('/api/v1/admin/actors/' + a.id, { method: 'DELETE', body: { confirm_email: confirm.value.trim() } });
           state.cache.clear();
-          state.options = (await api('/api/v1/analytics/filters')).items;
+          applyFilterOptions(await api('/api/v1/analytics/filters'));
           close();
           loadPage().then(() => setStatus((a.display_name || a.email) + ' foi excluído', 'ok'));
         } catch (err) {
@@ -966,39 +1012,57 @@
   const PAGES = {
     inicio: {
       title: 'Início', sub: 'Visão geral da operação e do que pede atenção.', icon: 'inicio',
-      filters: ['org', 'days'], defaults: { days: '30' },
+      filters: ['org', 'abe', 'days'], defaults: { days: '30' },
       load: (f) => Promise.all([fetchCached('/api/v1/analytics/summary', f), fetchCached('/api/v1/analytics/timeseries', f), fetchCached('/api/v1/analytics/usage', f), fetchCached('/api/v1/analytics/executions', f)])
         .then(([summary, timeseries, usage, executions]) => ({ summary, timeseries: timeseries.items, usage, executions: executions.items })),
       render: renderInicio,
     },
     execucoes: {
       title: 'Execuções', sub: 'User Stories abertas e concluídas, funil de aprovações e idade das que seguem abertas.', icon: 'execucoes',
-      filters: ['org', 'project', 'days', 'status', 'q'], defaults: { days: '30' },
+      filters: ['org', 'project', 'abe', 'days', 'status', 'q'], defaults: { days: '30' },
       load: (f) => Promise.all([fetchCached('/api/v1/analytics/summary', f), fetchCached('/api/v1/analytics/timeseries', f), fetchCached('/api/v1/analytics/executions', f)])
         .then(([summary, timeseries, executions]) => ({ summary, timeseries: timeseries.items, executions: executions.items, window: executions.window })),
       render: renderExecucoes,
     },
+    prompts: {
+      title: 'Prompts e retrabalho', sub: 'Quantos prompts cada User Story exige, tokens e linhas por prompt, e quanto vai para correção.', icon: 'prompts',
+      filters: ['org', 'project', 'abe', 'days'], defaults: { days: '30' },
+      load: (f) => fetchCached('/api/v1/analytics/prompts', f).then((prompts) => ({ prompts })),
+      render: renderPrompts,
+    },
+    inconsistencias: {
+      title: 'Inconsistências', sub: 'Desvios do processo por ABE, para tratativa manual e pauta das reuniões de 1:1.', icon: 'inconsistencias',
+      filters: ['org', 'abe', 'days', 'istatus', 'itype'], defaults: { days: '30', istatus: 'open' },
+      load: (f) => Promise.all([
+        api('/api/v1/inconsistencies' + serverQuery(f) + '&status=' + encodeURIComponent(f.istatus || 'open') + (f.itype ? '&type=' + encodeURIComponent(f.itype) : '')),
+        state.role === 'admin' ? api('/api/v1/admin/adjustments' + serverQuery(f)) : Promise.resolve(null),
+        f.abe ? fetchCached('/api/v1/analytics/prompts', f) : Promise.resolve(null),
+        f.abe ? fetchCached('/api/v1/analytics/summary', f) : Promise.resolve(null),
+        f.abe && f.istatus !== 'all' ? api('/api/v1/inconsistencies' + serverQuery(f) + '&status=all') : Promise.resolve(null),
+      ]).then(([inc, adjustments, prompts, summary, history]) => ({ inc, adjustments, prompts, summary, history })),
+      render: renderInconsistencias,
+    },
     governanca: {
       title: 'Governança', sub: 'Decisões da Policy Engine e as regras monitoradas.', icon: 'governanca',
-      filters: ['org', 'project', 'days'], defaults: { days: '30' },
+      filters: ['org', 'project', 'abe', 'days'], defaults: { days: '30' },
       load: (f) => fetchCached('/api/v1/analytics/summary', f).then((summary) => ({ summary })),
       render: renderGovernanca,
     },
     entregas: {
       title: 'Entregas', sub: 'Deploys registrados por ambiente e resultado.', icon: 'entregas',
-      filters: ['org', 'project', 'days', 'env'], defaults: { days: '30' },
+      filters: ['org', 'project', 'abe', 'days', 'env'], defaults: { days: '30' },
       load: (f) => fetchCached('/api/v1/analytics/summary', f).then((summary) => ({ summary })),
       render: renderEntregas,
     },
     consumo: {
       title: 'Consumo e custo', sub: 'Tokens e custo estimado pela telemetria do Claude Code.', icon: 'consumo',
-      filters: ['org', 'project', 'days', 'by'], defaults: { days: '30', by: 'by_actor' },
+      filters: ['org', 'project', 'abe', 'days', 'by'], defaults: { days: '30', by: 'by_actor' },
       load: (f) => fetchCached('/api/v1/analytics/usage', f).then((usage) => ({ usage })),
       render: renderConsumo,
     },
     equipe: {
       title: 'Equipe', sub: 'ABEs cadastrados e comparativo de entrega e lead time.', icon: 'equipe',
-      filters: ['org', 'project', 'days', 'group'], defaults: { days: '30', group: 'actors' },
+      filters: ['org', 'project', 'abe', 'days', 'group'], defaults: { days: '30', group: 'actors' },
       load: (f) => Promise.all([fetchCached('/api/v1/analytics/actors', f), fetchCached('/api/v1/analytics/projects', f), fetchCached('/api/v1/analytics/organizations', f),
         state.role === 'admin' ? api('/api/v1/admin/actors') : Promise.resolve(null)])
         .then(([actors, projects, organizations, registry]) => ({ actors: actors.items, projects: projects.items, organizations: organizations.items, registry })),
@@ -1006,7 +1070,7 @@
     },
     atividade: {
       title: 'Atividade técnica', sub: 'Eventos registrados pelos hooks do Claude Code.', icon: 'atividade',
-      filters: ['org', 'project', 'days'], defaults: { days: '30' },
+      filters: ['org', 'project', 'abe', 'days'], defaults: { days: '30' },
       load: (f) => fetchCached('/api/v1/analytics/summary', f).then((summary) => ({ summary })),
       render: renderAtividade,
     },
@@ -1100,7 +1164,7 @@
     const rows = items.filter((e) => {
       if (f.status === 'open' && !isOpen(e)) return false;
       if (f.status === 'stale' && !(isOpen(e) && ageMs(e) > 7 * DAY)) return false;
-      if (['done', 'blocked', 'cancelled'].includes(f.status) && e.status !== f.status) return false;
+      if (['done', 'blocked', 'cancelled', 'inconsistent'].includes(f.status) && e.status !== f.status) return false;
       if (q && ![e.external_ref, e.title, e.abe_email, e.display_name, e.project_name].some((v) => String(v || '').toLowerCase().includes(q))) return false;
       return true;
     });
@@ -1109,13 +1173,16 @@
       { key: 'external_ref', label: 'User Story', cell: (r) => who(r.external_ref, r.title && r.title !== r.external_ref ? r.title : null) },
       { key: 'project_name', label: 'Projeto' },
       { key: 'display_name', label: 'ABE', cell: (r) => who(r.display_name || r.abe_email, r.abe_email) },
-      { key: 'status', label: 'Status', cell: (r) => statusChip(r.status) },
+      { key: 'status', label: 'Status', cell: (r) => [statusChip(r.status), r.manually_adjusted ? withTip(el('span', { class: 'pill-count', tabindex: '0' }, 'ajuste'), 'Ajustada manualmente pelo gestor.') : null,
+        r.open_inconsistencies ? withTip(el('a', { class: 'pill-count', href: hashFor('inconsistencias', { abe: r.abe_email, istatus: 'open' }) }, String(r.open_inconsistencies)), r.open_inconsistencies + ' inconsistência(s) aberta(s)') : null] },
       { key: 'gates', label: 'Aprovações', sortValue: (r) => [r.plan_approved, r.pr_approved, r.deploy_approved, r.prod_deployed].filter(Boolean).length,
         cell: (r) => el('span', { class: 'gates' }, [gate('Plano', r.plan_approved), gate('PR', r.pr_approved), gate('Deploy', r.deploy_approved), gate('Produção', r.prod_deployed)]) },
       { key: 'started_at', label: 'Iniciada', sortValue: (r) => Date.parse(r.started_at), cell: (r) => fmtDate(r.started_at) },
       { key: 'age', label: 'Duração', num: true, sortValue: ageMs, cell: (r) => [fmtDuration(ageMs(r) / 1000), isOpen(r) && ageMs(r) > 7 * DAY ? withTip(el('button', { class: 'flag', type: 'button', 'aria-label': 'Aberta há mais de 7 dias' }, svgFrom(ICON.warn)), 'Aberta há mais de 7 dias') : null] },
       { key: 'last_activity_at', label: 'Última atividade', sortValue: (r) => (r.last_activity_at ? Date.parse(r.last_activity_at) : null), cell: (r) => fmtDate(r.last_activity_at) },
       { key: 'sessions_count', label: 'Sessões', num: true, cell: (r) => fmtInt(r.sessions_count) },
+      { key: 'prompts_count', label: 'Prompts', num: true, cell: (r) => fmtInt(r.prompts_count) },
+      { key: 'actions', label: 'Ações', nosort: true, cell: (r) => executionActions(r, items) },
     ];
     return [
       grid('g-kpi', [
@@ -1218,6 +1285,10 @@
     const used = new Set(rows.map((r) => r.status));
     const tableRows = envs.map((e) => ({ env: e, total: envTotal(e), ...Object.fromEntries(Object.keys(DEPLOY).map((k) => [k, byEnv[e][k] || 0])) }));
     return [
+      el('div', { class: 'wip', role: 'note' }, [svgFrom('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON_PATHS.tool + '</svg>'), el('div', {}, [
+        el('strong', {}, 'Estamos trabalhando em uma solução para acompanhar as entregas'),
+        'Nos clientes, o deploy não sai da máquina do ABE: ele acontece nas ferramentas de CI/CD de cada cliente (Azure DevOps e outras). Estamos construindo a integração com essas ferramentas. Até lá, os números abaixo mostram só os deploys registrados manualmente, e a conclusão de uma User Story não exige deploy.',
+      ])]),
       grid('g-kpi', [
         kpi({ label: 'Deploys no período', value: fmtInt(total), foot: el('span', {}, f.env ? ENV_LABEL[f.env] : 'todos os ambientes') }),
         kpi({ label: 'Taxa de sucesso', value: total ? fmtPct(sumBy('succeeded') / total) : '—', foot: el('span', {}, fmtInt(sumBy('succeeded')) + ' com sucesso') }),
@@ -1368,6 +1439,499 @@
     ];
   }
 
+  // ---------- Prompts e retrabalho ----------
+  const KIND = {
+    nova_funcionalidade: { label: 'Nova funcionalidade', color: 'var(--series-c)' },
+    melhoria: { label: 'Melhoria', color: 'var(--series-b)' },
+    correcao: { label: 'Correção', color: 'var(--bad-fill)' },
+    sem_codigo: { label: 'Sem código', color: 'var(--neutral-fill)' },
+    nao_classificado: { label: 'Não classificado', color: 'var(--warn-fill)' },
+  };
+  const FIX_ORIGIN = { abe_apontou: 'O ABE apontou o problema', teste_build_falhou: 'Teste ou build falhou', revisao_pr: 'Revisão do PR', pos_deploy: 'Depois do deploy', nao_informada: 'Origem não informada' };
+  const turnKind = (t) => t.kind || ((Number(t.lines_added) + Number(t.lines_removed)) > 0 ? 'nao_classificado' : 'sem_codigo');
+  const turnTokens = (t) => ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_creation_tokens'].reduce((x, k) => x + Number(t[k] || 0), 0);
+  const kindChip = (k) => { const d = KIND[k] || KIND.nao_classificado; return el('span', { class: 'kind', style: '--kc:' + d.color }, d.label); };
+  const linesNode = (a, r) => el('span', { class: 'num' }, [el('span', { class: 'lines-add' }, '+' + fmtInt(Number(a) || 0)), ' ', el('span', { class: 'lines-del' }, '−' + fmtInt(Number(r) || 0))]);
+
+  function stackedDayChart(rows, days) {
+    const keys = Object.keys(KIND).filter((k) => rows.some((r) => r[k]));
+    if (!keys.length) return emptyNode('Nenhum prompt registrado no período.');
+    return el('div', {}, [legend(keys.map((k) => ({ color: KIND[k].color, label: KIND[k].label }))), later(el('div', { class: 'chart' }), (t) => drawStacked(t, rows, keys, days))]);
+  }
+  function drawStacked(target, items, keys, days) {
+    const W = Math.max(300, Math.round(target.clientWidth || 900)), H = W < 600 ? 180 : 220, L = 30, R = 8, T = 10, B = 24;
+    const pw = W - L - R, ph = H - T - B;
+    const sum = (r) => keys.reduce((x, k) => x + (r[k] || 0), 0);
+    const maxY = Math.max(1, ...items.map(sum));
+    const step = Math.max(1, Math.ceil(maxY / 4));
+    const top = step * Math.ceil(maxY / step);
+    const slot = pw / items.length;
+    const gap = Math.max(0.5, Math.min(4, slot * 0.2));
+    const bw = Math.max(1, slot - gap * 2);
+    const y = (v) => T + ph - (v / top) * ph;
+    const svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Prompts por dia e por tipo, ' + periodText(days) + '. Máximo de ' + maxY + ' prompts em um dia.' });
+    for (let v = 0; v <= top; v += step) {
+      svg.appendChild(el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: v === 0 ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1 }));
+      svg.appendChild(el('text', { x: L - 8, y: y(v) + 4, 'text-anchor': 'end' }, String(v)));
+    }
+    const every = Math.max(1, Math.ceil(items.length / Math.max(3, Math.floor(W / 90))));
+    const band = el('rect', { y: T, height: ph, width: slot, fill: 'var(--brand-soft)', visibility: 'hidden' });
+    svg.appendChild(band);
+    items.forEach((r, i) => {
+      let acc = 0;
+      const x0 = L + i * slot + gap;
+      for (const k of keys) {
+        const v = r[k] || 0;
+        if (!v) continue;
+        svg.appendChild(el('rect', { x: x0, y: y(acc + v), width: bw, height: Math.max(0.5, y(acc) - y(acc + v)), fill: KIND[k].color }));
+        acc += v;
+      }
+      if (i % every === 0 || i === items.length - 1) svg.appendChild(el('text', { x: L + i * slot + slot / 2, y: H - 6, 'text-anchor': 'middle' }, fmtDay(r.day)));
+    });
+    const hit = el('rect', { x: L, y: T, width: pw, height: ph, fill: 'transparent' });
+    hit.addEventListener('mousemove', (e) => {
+      const box = svg.getBoundingClientRect();
+      const px = ((e.clientX - box.left) / box.width) * W;
+      const i = Math.max(0, Math.min(items.length - 1, Math.floor((px - L) / slot)));
+      band.setAttribute('x', L + i * slot);
+      band.setAttribute('visibility', 'visible');
+      const r = items[i];
+      showTip('<strong>' + fmtDay(r.day) + '</strong> · ' + sum(r) + ' prompt(s)<br>' + keys.filter((k) => r[k]).map((k) => KIND[k].label + ': <strong>' + r[k] + '</strong>').join('<br>'), e.clientX, e.clientY);
+    });
+    hit.addEventListener('mouseleave', () => { band.setAttribute('visibility', 'hidden'); hideTip(); });
+    svg.appendChild(hit);
+    target.replaceChildren(svg);
+  }
+
+  function promptKpis(p) {
+    const t = p.totals, u = p.us, days = p.window.days;
+    return grid('g-kpi', [
+      kpi({ label: 'Prompts por US (mediana)', value: fmtNum1(u.median_prompts),
+        foot: [delta(u.median_prompts, p.previous_us.median_prompts, { days, higherIsBetter: false }), el('span', {}, fmtInt(u.done_with_prompts) + ' US concluída(s) · p90 ' + fmtNum1(u.p90_prompts))],
+        tipHtml: 'Quantos prompts do ABE cada User Story <strong>concluída no período</strong> precisou, do primeiro ao último.' }),
+      kpi({ label: 'Tokens por prompt (mediana)', value: fmtCompact(t.median_tokens_per_prompt),
+        foot: delta(t.median_tokens_per_prompt, p.previous.median_tokens_per_prompt, { days, higherIsBetter: false }),
+        tipHtml: 'Tokens de cada prompt, somando a resposta inteira do agente e dos subagentes (inclui leitura de cache).<br>p90: ' + fmtCompact(t.p90_tokens_per_prompt) }),
+      kpi({ label: 'Linhas por prompt (mediana)', value: el('span', {}, [el('span', { class: 'lines-add' }, '+' + fmtNum1(t.median_lines_added_per_prompt)), ' ', el('span', { class: 'lines-del' }, '−' + fmtNum1(t.median_lines_removed_per_prompt))]),
+        foot: el('span', {}, '+' + fmtCompact(t.lines_added) + ' / −' + fmtCompact(t.lines_removed) + ' no período'),
+        tipHtml: 'Linhas incluídas e removidas pelo agente em cada prompt que alterou código. Conta as edições feitas pelas ferramentas de edição do Claude Code.' }),
+      kpi({ label: 'Tokens em correção', value: fmtPct(t.correction_token_share),
+        foot: delta(t.correction_token_share, p.previous.correction_token_share, { days, unit: 'pp', higherIsBetter: false }),
+        tipHtml: fmtCompact(t.correction_tokens) + ' tokens' + (t.correction_cost_usd !== null && t.correction_cost_usd !== undefined ? ' (' + fmtCost(t.correction_cost_usd) + ')' : '') + ' em prompts de <strong>correção</strong>, ou seja, retrabalho por problema. Melhorias pedidas pelo ABE não entram aqui.' }),
+      kpi({ label: 'Reparos por US (média)', value: fmtNum1(u.mean_correction_prompts),
+        foot: el('span', {}, u.with_correction_share === null ? 'sem US concluída' : fmtPct(u.with_correction_share) + ' das US tiveram correção'),
+        tipHtml: 'Prompts de correção antes de a User Story ser concluída. Ciclos de reparo (mediana): ' + fmtNum1(u.median_fix_cycles) + '.' }),
+      kpi({ label: 'Prompts sem classificação', value: fmtInt(t.unclassified_with_code),
+        foot: el('span', {}, p.prompts_without_us ? fmtInt(p.prompts_without_us) + ' prompt(s) sem US' : 'todos ligados a uma US'),
+        tipHtml: 'Prompts que alteraram código sem o agente declarar o tipo. Aparecem na tela de Inconsistências.' }),
+    ]);
+  }
+
+  function renderPrompts(d, f) {
+    const p = d.prompts, t = p.totals;
+    if (!p.has_data) return [card({ title: 'Prompts e retrabalho', body: emptyNode('Nenhum prompt medido no período. A medição por prompt começa quando o ABE atualiza o kit da Operação Lynse na máquina dele.') })];
+    const kinds = Object.keys(KIND).filter((k) => t.by_kind[k] && t.by_kind[k].prompts);
+    const maxK = Math.max(1, ...kinds.map((k) => t.by_kind[k].prompts));
+    const origins = Object.entries(t.by_fix_origin || {}).sort((a, b) => b[1].tokens - a[1].tokens);
+    const maxO = Math.max(1, ...origins.map(([, v]) => v.tokens));
+    const actorCols = [
+      { key: 'display_name', label: 'ABE', sortValue: (r) => (r.display_name || r.abe_email).toLowerCase(), cell: (r) => who(r.display_name || r.abe_email, r.abe_email) },
+      { key: 'prompts', label: 'Prompts', num: true, cell: (r) => fmtInt(r.prompts) },
+      { key: 'median_prompts_per_us', label: 'Prompts por US', num: true, cell: (r) => fmtNum1(r.median_prompts_per_us) },
+      { key: 'mean_correction_prompts_per_us', label: 'Reparos por US', num: true, cell: (r) => fmtNum1(r.mean_correction_prompts_per_us) },
+      { key: 'correction_token_share', label: 'Tokens em correção', num: true, cell: (r) => fmtPct(r.correction_token_share) },
+      { key: 'median_tokens_per_prompt', label: 'Tokens/prompt', num: true, cell: (r) => fmtCompact(r.median_tokens_per_prompt) },
+      { key: 'lines_added', label: 'Linhas', num: true, cell: (r) => linesNode(r.lines_added, r.lines_removed) },
+      { key: 'unclassified_with_code', label: 'Sem classificação', num: true, cell: (r) => fmtInt(r.unclassified_with_code) },
+      { key: 'prompts_without_us', label: 'Sem US', num: true, cell: (r) => fmtInt(r.prompts_without_us) },
+    ];
+    const usCols = [
+      { key: 'external_ref', label: 'User Story', cell: (r) => who(r.external_ref, r.title && r.title !== r.external_ref ? r.title : r.project_name) },
+      { key: 'display_name', label: 'ABE', cell: (r) => who(r.display_name || r.abe_email) },
+      { key: 'status', label: 'Status', cell: (r) => statusChip(r.status) },
+      { key: 'prompts', label: 'Prompts', num: true, cell: (r) => fmtInt(r.prompts) },
+      { key: 'correction_prompts', label: 'Correções', num: true, cell: (r) => fmtInt(r.correction_prompts) },
+      { key: 'fix_cycles', label: 'Ciclos de reparo', num: true, cell: (r) => fmtInt(r.fix_cycles) },
+      { key: 'improvement_prompts', label: 'Melhorias', num: true, cell: (r) => fmtInt(r.improvement_prompts) },
+      { key: 'correction_token_share', label: 'Tokens em correção', num: true, cell: (r) => fmtPct(r.correction_token_share) },
+      { key: 'tokens', label: 'Tokens', num: true, cell: (r) => fmtCompact(r.tokens) },
+      { key: 'cost_usd', label: 'Custo', num: true, cell: (r) => fmtCost(r.cost_usd) },
+      { key: 'lines_added', label: 'Linhas', num: true, cell: (r) => linesNode(r.lines_added, r.lines_removed) },
+      { key: 'actions', label: '', nosort: true, cell: (r) => { const b = el('button', { class: 'btn-ghost btn-sm t', type: 'button' }, 'Ver prompts'); b.addEventListener('click', () => openTurns({ id: r.execution_id, external_ref: r.external_ref, title: r.title })); return b; } },
+    ];
+    return [
+      promptKpis(p),
+      grid('g-2', [
+        card({ title: 'Prompts por dia, por tipo', sub: periodText(p.window.days), body: stackedDayChart(p.by_day, p.window.days) }),
+        card({ title: 'Para onde vai o esforço', info: '<strong>Correção</strong>: algo estava errado (retrabalho por problema).<br><strong>Melhoria</strong>: o ABE pediu algo a mais ou mudou o requisito.<br><strong>Nova funcionalidade</strong>: algo que ainda não existia na US.<br>Quem classifica é o próprio agente, ao fim de cada resposta; o gestor pode corrigir.',
+          body: el('div', { class: 'bars' }, kinds.map((k) => { const b = t.by_kind[k]; return barRow(
+            el('div', { class: 'bar-label' }, [KIND[k].label, el('small', {}, fmtCompact(b.tokens) + ' tokens · +' + fmtInt(b.lines_added) + ' / −' + fmtInt(b.lines_removed) + ' linhas')]),
+            [{ value: b.prompts, share: b.prompts / maxK, color: KIND[k].color }], fmtInt(b.prompts),
+            '<strong>' + KIND[k].label + '</strong><br>' + b.prompts + ' prompt(s)<br>' + fmtCompact(b.tokens) + ' tokens (' + fmtPct(t.tokens ? b.tokens / t.tokens : null) + ' do total)' + (b.cost_usd ? '<br>' + fmtCost(b.cost_usd) : '')); })) }),
+      ]),
+      grid('g-2', [
+        card({ title: 'Tokens em correção, por origem', info: 'De onde veio cada correção, segundo o agente: o ABE apontou o problema, um teste ou build falhou, a revisão do PR pediu, ou apareceu depois do deploy.',
+          body: origins.length ? el('div', { class: 'bars' }, origins.map(([o, v]) => barRow(el('div', { class: 'bar-label' }, [FIX_ORIGIN[o] || o, el('small', {}, v.prompts + ' prompt(s)')]),
+            [{ value: v.tokens, share: v.tokens / maxO, color: 'var(--bad-fill)' }], fmtCompact(v.tokens)))) : emptyNode('Nenhum prompt de correção no período.', true) }),
+        card({ title: 'Como a medição funciona', body: el('div', { class: 'sub' }, [
+          el('p', {}, [el('strong', {}, 'Na máquina do ABE. '), 'Os hooks somam, a cada prompt, os tokens da resposta do agente (lidos do histórico local do Claude Code) e as linhas incluídas e removidas pelas ferramentas de edição. Só os números vão ao servidor: nunca o prompt, o código ou o nome dos arquivos.']),
+          el('p', {}, [el('strong', {}, 'Classificação. '), 'O agente termina cada resposta que alterou código com o tipo (nova funcionalidade, melhoria ou correção e a origem). Na dúvida entre melhoria e correção, ele pergunta ao ABE. O gestor pode reclassificar.']),
+          el('p', {}, [el('strong', {}, 'Custo. '), 'É a fatia do custo informado pela telemetria da sessão, proporcional aos tokens de cada prompt. Sem telemetria, aparece só o volume de tokens.']),
+        ]) }),
+      ]),
+      card({ title: 'Por ABE', body: p.by_actor.length ? sortableTable('pr-actors', 'Prompts no período por ABE. "Prompts por US" e "Reparos por US" consideram as User Stories concluídas no período.', actorCols, p.by_actor, { key: 'prompts', dir: 'desc' }) : emptyNode('Sem prompts no período.') }),
+      card({ title: 'Por User Story', sub: p.by_work_item.length + ' no período', body: p.by_work_item.length ? sortableTable('pr-us', 'User Stories com prompts no período. Para as concluídas, conta todos os prompts da US.', usCols, p.by_work_item, { key: 'correction_prompts', dir: 'desc' }) : emptyNode('Nenhuma User Story com prompts medidos.') }),
+    ];
+  }
+
+  // ---------- Operador (quem faz o ajuste) ----------
+  const LS_OPERATOR = 'lynse_dashboard_operator';
+  function operatorFields(prefix) {
+    const reason = el('textarea', { id: prefix + '-reason', required: true, placeholder: 'Por que este ajuste está sendo feito? Fica registrado no histórico.' });
+    const by = el('input', { id: prefix + '-by', type: 'text', autocomplete: 'off', value: lsGet(LS_OPERATOR) || '', placeholder: 'Seu nome' });
+    return {
+      reason, by,
+      nodes: [formField(prefix + '-reason', 'Motivo (obrigatório)', reason), formField(prefix + '-by', 'Quem está ajustando', by, 'Lembrado neste navegador.')],
+      values: () => { const name = by.value.trim(); if (name) lsSet(LS_OPERATOR, name); return { reason: reason.value.trim(), performed_by: name || undefined }; },
+    };
+  }
+  function afterAdjust(close, message) {
+    state.cache.clear();
+    close();
+    loadPage().then(() => setStatus(message, 'ok'));
+  }
+  const toLocalInput = (d) => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 16); };
+
+  // ---------- Ajustes manuais de execução ----------
+  const ADJUST = {
+    complete: { label: 'Concluir manualmente', help: 'Encerra a US como concluída na data informada. Resolve as inconsistências de US aberta ou parada.', when: (s) => !['done', 'cancelled'].includes(s) },
+    cancel: { label: 'Cancelar', help: 'Encerra a US como cancelada (trabalho abandonado ou aberto por engano).', when: (s) => !['done', 'cancelled'].includes(s) },
+    reopen: { label: 'Reabrir', help: 'Volta a US para a etapa em que estava. Só é possível se o ABE não tiver outra US ativa.', when: (s) => ['done', 'cancelled', 'inconsistent'].includes(s) },
+    add_approval: { label: 'Registrar aprovação', help: 'Registra uma aprovação que aconteceu fora da ferramenta (reunião, Azure DevOps, e-mail). Fica marcada como manual.', when: () => true },
+    set_ended_at: { label: 'Corrigir data de conclusão', help: 'Ajusta quando a US foi realmente concluída. Afeta o lead time.', when: (s) => ['done', 'cancelled'].includes(s) },
+    merge: { label: 'Mesclar em outra execução', help: 'Para trabalho duplicado: sessões, prompts, eventos e aprovações passam para a execução de destino, e esta é cancelada.', when: (s) => s !== 'cancelled' },
+  };
+  const GATE_LABEL = { plan: 'Plano', pr: 'Pull Request', deploy: 'Deploy', rollback: 'Rollback', close: 'Fechamento' };
+  function executionActions(r, all) {
+    const box = el('span', { class: 'row-actions' });
+    const turns = el('button', { class: 'btn-ghost btn-sm t', type: 'button' }, 'Prompts');
+    turns.addEventListener('click', () => openTurns(r));
+    box.appendChild(turns);
+    if (state.role === 'admin') {
+      const adj = el('button', { class: 'btn-ghost btn-sm t', type: 'button' }, 'Ajustar');
+      adj.addEventListener('click', () => openAdjust(r, { candidates: all }));
+      box.appendChild(adj);
+    }
+    return box;
+  }
+  function openAdjust(e, { action: preset, candidates } = {}) {
+    openDialog({ title: 'Ajustar a US ' + e.external_ref, build: async ({ content, close }) => {
+      const options = Object.entries(ADJUST).filter(([, a]) => a.when(e.status));
+      const action = el('select', { id: 'adj-action' }, options.map(([k, a]) => el('option', { value: k }, a.label)));
+      if (preset && options.some(([k]) => k === preset)) action.value = preset;
+      const help = el('p', { class: 'hint' });
+      const ended = el('input', { id: 'adj-ended', type: 'datetime-local', value: toLocalInput(new Date()) });
+      const gate = el('select', { id: 'adj-gate' }, ['plan', 'pr', 'deploy', 'close'].map((g) => el('option', { value: g }, GATE_LABEL[g])));
+      let list = candidates;
+      if (!list) { try { list = (await api('/api/v1/analytics/executions?days=90' + (e.abe_email ? '&abe_email=' + encodeURIComponent(e.abe_email) : ''))).items; } catch { list = []; } }
+      const targets = (list || []).filter((x) => x.id !== e.id && (!e.abe_email || x.abe_email === e.abe_email) && x.status !== 'cancelled');
+      const target = el('select', { id: 'adj-target' }, targets.length ? targets.map((x) => el('option', { value: x.id }, x.external_ref + ' — ' + (STATUS[x.status] || [x.status])[0] + ' — iniciada ' + fmtDate(x.started_at))) : [el('option', { value: '' }, 'Nenhuma outra execução deste ABE')]);
+      const op = operatorFields('adj');
+      const fEnded = formField('adj-ended', 'Data e hora reais', ended);
+      const fGate = formField('adj-gate', 'Aprovação', gate);
+      const fTarget = formField('adj-target', 'Execução de destino', target);
+      const msg = el('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+      const submit = el('button', { class: 'btn t', type: 'submit' }, 'Registrar ajuste');
+      const cancel = el('button', { class: 'btn-ghost t', type: 'button' }, 'Cancelar');
+      cancel.addEventListener('click', close);
+      const sync = () => {
+        const a = action.value;
+        help.textContent = ADJUST[a].help;
+        fEnded.hidden = !['complete', 'set_ended_at'].includes(a);
+        fGate.hidden = a !== 'add_approval';
+        fTarget.hidden = a !== 'merge';
+        submit.className = 'btn t' + (['cancel', 'merge'].includes(a) ? ' btn-danger' : '');
+      };
+      action.addEventListener('change', sync);
+      const form = el('form', { class: 'modal-form', novalidate: true }, [
+        el('p', { class: 'sub' }, [who(e.external_ref, (e.display_name || e.abe_email || '') + (e.status ? ' · ' + (STATUS[e.status] || [e.status])[0] : ''))]),
+        formField('adj-action', 'O que fazer', action), help, fEnded, fGate, fTarget, ...op.nodes, msg,
+        el('div', { class: 'modal-actions' }, [cancel, submit]),
+      ]);
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const v = op.values();
+        if (v.reason.length < 5) { msg.className = 'status err'; msg.textContent = 'Descreva o motivo (mínimo de 5 caracteres).'; op.reason.focus(); return; }
+        const a = action.value;
+        const body = { action: a, ...v };
+        if (['complete', 'set_ended_at'].includes(a)) {
+          if (!ended.value) { msg.className = 'status err'; msg.textContent = 'Informe a data.'; return; }
+          body.ended_at = new Date(ended.value).toISOString();
+        }
+        if (a === 'add_approval') body.gate = gate.value;
+        if (a === 'merge') { if (!target.value) { msg.className = 'status err'; msg.textContent = 'Não há execução de destino.'; return; } body.target_execution_id = target.value; }
+        submit.disabled = true;
+        msg.className = 'status'; msg.textContent = 'Registrando…';
+        try {
+          await api('/api/v1/admin/executions/' + e.id + '/adjust', { method: 'POST', body });
+          afterAdjust(close, 'Ajuste registrado na US ' + e.external_ref);
+        } catch (err) {
+          submit.disabled = false;
+          msg.className = 'status err'; msg.textContent = 'Não foi possível ajustar: ' + err.message;
+        }
+      });
+      sync();
+      content.replaceChildren(form);
+      action.focus();
+    } });
+  }
+
+  // ---------- Prompts de uma execução ----------
+  function openTurns(e) {
+    openDialog({ title: 'Prompts da US ' + e.external_ref, wide: true, build: async ({ content, close }) => {
+      const load = async () => {
+        content.replaceChildren(el('div', { class: 'skeleton', style: 'width:70%;margin:8px 0' }), el('div', { class: 'skeleton', style: 'width:50%' }));
+        let turns;
+        try { turns = (await api('/api/v1/executions/' + e.id + '/turns')).items; }
+        catch (err) { content.replaceChildren(el('p', { class: 'status err' }, 'Não foi possível carregar: ' + err.message)); return; }
+        const closeBtn = el('button', { class: 'btn-ghost t', type: 'button' }, 'Fechar');
+        closeBtn.addEventListener('click', close);
+        if (!turns.length) { content.replaceChildren(emptyNode('Nenhum prompt medido nesta execução. A medição por prompt começou com a versão atual do kit.'), el('div', { class: 'modal-actions' }, closeBtn)); return; }
+        const total = turns.reduce((x, t) => x + turnTokens(t), 0);
+        const fixes = turns.filter((t) => t.kind === 'correcao').length;
+        const added = turns.reduce((x, t) => x + Number(t.lines_added), 0);
+        const removed = turns.reduce((x, t) => x + Number(t.lines_removed), 0);
+        const editor = el('div');
+        const rows = turns.map((t, i) => ({ ...t, n: i + 1, tokens: turnTokens(t), k: turnKind(t) }));
+        const cols = [
+          { key: 'n', label: '#', num: true },
+          { key: 'started_at', label: 'Quando', sortValue: (r) => Date.parse(r.started_at), cell: (r) => fmtDate(r.started_at) },
+          { key: 'k', label: 'Tipo', cell: (r) => [kindChip(r.k), r.fix_origin ? el('small', { class: 'hint', style: 'display:block' }, FIX_ORIGIN[r.fix_origin] || r.fix_origin) : null, r.classified_by === 'gestor' ? el('small', { class: 'hint', style: 'display:block' }, 'classificado pelo gestor') : null] },
+          { key: 'tokens', label: 'Tokens', num: true, cell: (r) => fmtCompact(r.tokens) },
+          { key: 'lines_added', label: 'Linhas', num: true, cell: (r) => linesNode(r.lines_added, r.lines_removed) },
+          { key: 'files_changed', label: 'Arquivos', num: true, cell: (r) => fmtInt(Number(r.files_changed)) + (Number(r.files_reedited) ? ' (' + r.files_reedited + ' de novo)' : '') },
+          { key: 'tool_failures', label: 'Falhas', num: true, cell: (r) => fmtInt(Number(r.tool_failures)) },
+        ];
+        if (state.role === 'admin') cols.push({ key: 'act', label: '', nosort: true, cell: (r) => {
+          const b = el('button', { class: 'btn-ghost btn-sm t', type: 'button' }, 'Reclassificar');
+          b.addEventListener('click', () => showEditor(r));
+          return b;
+        } });
+        const showEditor = (r) => {
+          const kind = el('select', { id: 'tk-kind' }, ['nova_funcionalidade', 'melhoria', 'correcao', 'sem_codigo'].map((k) => el('option', { value: k }, KIND[k].label)));
+          kind.value = r.kind || 'correcao';
+          const origin = el('select', { id: 'tk-origin' }, Object.entries(FIX_ORIGIN).filter(([k]) => k !== 'nao_informada').map(([k, v]) => el('option', { value: k }, v)));
+          if (r.fix_origin) origin.value = r.fix_origin;
+          const fOrigin = formField('tk-origin', 'Origem da correção', origin);
+          const syncK = () => { fOrigin.hidden = kind.value !== 'correcao'; };
+          kind.addEventListener('change', syncK);
+          const op = operatorFields('tk');
+          const msg = el('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+          const save = el('button', { class: 'btn t', type: 'submit' }, 'Salvar classificação');
+          const cancel = el('button', { class: 'btn-ghost t', type: 'button' }, 'Cancelar');
+          cancel.addEventListener('click', () => editor.replaceChildren());
+          const form = el('form', { class: 'inline-form modal-form', novalidate: true }, [
+            el('div', { class: 'field' }, [el('strong', {}, 'Prompt #' + r.n), el('small', { class: 'hint' }, fmtDate(r.started_at))]),
+            formField('tk-kind', 'Tipo', kind), fOrigin, ...op.nodes, msg, el('div', { class: 'modal-actions' }, [cancel, save]),
+          ]);
+          form.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const v = op.values();
+            if (v.reason.length < 5) { msg.className = 'status err'; msg.textContent = 'Descreva o motivo (mínimo de 5 caracteres).'; return; }
+            save.disabled = true;
+            try {
+              await api('/api/v1/admin/turns/' + r.id + '/classify', { method: 'POST', body: { kind: kind.value, fix_origin: kind.value === 'correcao' ? origin.value : undefined, ...v } });
+              state.cache.clear();
+              await load();
+              setStatus('Prompt reclassificado', 'ok');
+            } catch (err) { save.disabled = false; msg.className = 'status err'; msg.textContent = 'Não foi possível salvar: ' + err.message; }
+          });
+          syncK();
+          editor.replaceChildren(form);
+          kind.focus();
+        };
+        content.replaceChildren(
+          el('div', { class: 'headline' }, [el('strong', {}, fmtInt(turns.length)), ' prompt(s) · ', el('strong', {}, fmtCompact(total)), ' tokens · ', linesNode(added, removed), ' linhas · ', el('strong', {}, fmtInt(fixes)), ' correção(ões)']),
+          sortableTable('turns-' + e.id, 'Cada linha é um prompt do ABE nesta User Story, em ordem.', cols, rows, { key: 'n', dir: 'asc' }),
+          editor,
+          el('div', { class: 'modal-actions' }, closeBtn),
+        );
+      };
+      await load();
+    } });
+  }
+
+  // ---------- Inconsistências ----------
+  const INC = {
+    US_ABERTA_AO_INICIAR_OUTRA: { label: 'US deixada aberta ao iniciar outra', fix: 'Concluir, cancelar ou reabrir a US' },
+    US_PARADA: { label: 'US aberta além do esperado', fix: 'Confirmar com o ABE e concluir ou cancelar' },
+    SESSAO_SEM_US: { label: 'Código alterado sem US', fix: 'Vincular os prompts à User Story certa' },
+    TURNO_NAO_CLASSIFICADO: { label: 'Prompts sem classificação', fix: 'Classificar os prompts' },
+    CLASSIFICACAO_DIVERGENTE: { label: 'Classificação divergente', fix: 'Revisar a classificação dos prompts' },
+    CONCLUSAO_SEM_EVIDENCIA: { label: 'Concluída sem as aprovações', fix: 'Registrar as aprovações que ocorreram fora da ferramenta' },
+    APROVACAO_SEM_EVIDENCIA: { label: 'Aprovação sem prompt do ABE', fix: 'Confirmar com o ABE e justificar' },
+  };
+  const SEV = { high: 'Alta', medium: 'Média', low: 'Baixa' };
+  const INC_STATUS = { open: ['Aberta', 'warn'], resolved: ['Resolvida', 'done'], justified: ['Justificada', 'neutral'] };
+  function incDetails(i) {
+    const d = i.details || {};
+    switch (i.type) {
+      case 'US_PARADA': return 'Aberta há ' + d.horas_aberta + 'h (o esperado é até ' + d.limite_horas + 'h)';
+      case 'US_ABERTA_AO_INICIAR_OUTRA': return 'Estava em "' + ((STATUS[d.status_anterior] || [d.status_anterior || '—'])[0]) + '"' + (d.nova_us ? ' quando o ABE iniciou a ' + d.nova_us : d.us_mantida_ativa ? '; ficou ativa a ' + d.us_mantida_ativa : '');
+      case 'SESSAO_SEM_US':
+      case 'TURNO_NAO_CLASSIFICADO': return fmtInt(d.turnos) + ' prompt(s), ' + fmtInt(d.linhas) + ' linha(s) alterada(s)';
+      case 'CLASSIFICACAO_DIVERGENTE': return fmtInt(d.turnos) + ' prompt(s) marcados como "sem código", mas que alteraram linhas';
+      case 'CONCLUSAO_SEM_EVIDENCIA': return 'Faltou: ' + (d.faltando || []).map((g) => GATE_LABEL[g] || g).join(', ');
+      case 'APROVACAO_SEM_EVIDENCIA': return (GATE_LABEL[d.gate] || d.gate || 'Gate') + ': ' + (d.motivo || '');
+      default: return '';
+    }
+  }
+  const execOf = (i) => ({ id: i.execution_id, external_ref: i.external_ref, status: i.execution_status, abe_email: i.abe_email, display_name: i.display_name });
+  function incActions(i) {
+    if (state.role !== 'admin' || i.status !== 'open') return null;
+    const box = el('span', { class: 'row-actions' });
+    const add = (label, fn, cls) => { const b = el('button', { class: 'btn-ghost btn-sm t' + (cls ? ' ' + cls : ''), type: 'button' }, label); b.addEventListener('click', fn); box.appendChild(b); };
+    if (i.execution_id && ['US_PARADA', 'US_ABERTA_AO_INICIAR_OUTRA'].includes(i.type)) add('Ajustar US', () => openAdjust(execOf(i), { action: i.execution_status === 'inconsistent' || i.type === 'US_PARADA' ? 'complete' : undefined }));
+    if (i.execution_id && i.type === 'CONCLUSAO_SEM_EVIDENCIA') add('Registrar aprovação', () => openAdjust(execOf(i), { action: 'add_approval' }));
+    if (i.execution_id && ['TURNO_NAO_CLASSIFICADO', 'CLASSIFICACAO_DIVERGENTE'].includes(i.type)) add('Classificar', () => openTurns(execOf(i)));
+    if (i.type === 'SESSAO_SEM_US') add('Vincular a uma US', () => openAssign(i));
+    add('Resolvida', () => openResolve(i, 'resolved'));
+    add('Justificar', () => openResolve(i, 'justified'));
+    return box;
+  }
+  function openResolve(i, status) {
+    openDialog({ title: (status === 'justified' ? 'Justificar: ' : 'Marcar como resolvida: ') + (INC[i.type] || { label: i.type }).label, build: ({ content, close }) => {
+      const op = operatorFields('rs');
+      const msg = el('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+      const submit = el('button', { class: 'btn t', type: 'submit' }, status === 'justified' ? 'Registrar justificativa' : 'Marcar como resolvida');
+      const cancel = el('button', { class: 'btn-ghost t', type: 'button' }, 'Cancelar');
+      cancel.addEventListener('click', close);
+      const form = el('form', { class: 'modal-form', novalidate: true }, [
+        el('p', { class: 'sub' }, [(i.display_name || i.abe_email) + (i.external_ref ? ' · US ' + i.external_ref : '') + ' · ' + incDetails(i)]),
+        el('p', { class: 'hint' }, status === 'justified' ? 'Use quando o desvio teve um motivo aceitável e não precisa de correção nos dados.' : 'Use quando o problema já foi tratado por outro caminho.'),
+        ...op.nodes, msg, el('div', { class: 'modal-actions' }, [cancel, submit]),
+      ]);
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const v = op.values();
+        if (v.reason.length < 5) { msg.className = 'status err'; msg.textContent = 'Descreva o motivo (mínimo de 5 caracteres).'; op.reason.focus(); return; }
+        submit.disabled = true;
+        try {
+          await api('/api/v1/admin/inconsistencies/' + i.id + '/resolve', { method: 'POST', body: { status, ...v } });
+          afterAdjust(close, status === 'justified' ? 'Justificativa registrada' : 'Inconsistência resolvida');
+        } catch (err) { submit.disabled = false; msg.className = 'status err'; msg.textContent = 'Não foi possível registrar: ' + err.message; }
+      });
+      content.replaceChildren(form);
+      op.reason.focus();
+    } });
+  }
+  function openAssign(i) {
+    openDialog({ title: 'Vincular prompts a uma User Story', build: async ({ content, close }) => {
+      content.replaceChildren(el('div', { class: 'skeleton', style: 'width:70%' }));
+      let list = [];
+      try { list = (await api('/api/v1/analytics/executions?days=90&abe_email=' + encodeURIComponent(i.abe_email))).items; } catch { list = []; }
+      const target = el('select', { id: 'as-target' }, list.length ? list.map((x) => el('option', { value: x.id }, x.external_ref + ' — ' + (STATUS[x.status] || [x.status])[0] + ' — iniciada ' + fmtDate(x.started_at))) : [el('option', { value: '' }, 'Nenhuma execução deste ABE nos últimos 90 dias')]);
+      const op = operatorFields('as');
+      const msg = el('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+      const submit = el('button', { class: 'btn t', type: 'submit' }, 'Vincular');
+      const cancel = el('button', { class: 'btn-ghost t', type: 'button' }, 'Cancelar');
+      cancel.addEventListener('click', close);
+      const form = el('form', { class: 'modal-form', novalidate: true }, [
+        el('p', { class: 'sub' }, (i.display_name || i.abe_email) + ' alterou código numa sessão sem User Story: ' + incDetails(i) + '. Escolha a US a que esse trabalho pertence.'),
+        formField('as-target', 'User Story', target), ...op.nodes, msg, el('div', { class: 'modal-actions' }, [cancel, submit]),
+      ]);
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const v = op.values();
+        if (!target.value) { msg.className = 'status err'; msg.textContent = 'Não há User Story para vincular.'; return; }
+        if (v.reason.length < 5) { msg.className = 'status err'; msg.textContent = 'Descreva o motivo (mínimo de 5 caracteres).'; op.reason.focus(); return; }
+        submit.disabled = true;
+        try {
+          await api('/api/v1/admin/turns/assign', { method: 'POST', body: { claude_session_id: i.claude_session_id, execution_id: target.value, ...v } });
+          afterAdjust(close, 'Prompts vinculados à User Story');
+        } catch (err) { submit.disabled = false; msg.className = 'status err'; msg.textContent = 'Não foi possível vincular: ' + err.message; }
+      });
+      content.replaceChildren(form);
+      target.focus();
+    } });
+  }
+  const ADJ_LABEL = { complete: 'Concluiu manualmente', cancel: 'Cancelou', reopen: 'Reabriu', add_approval: 'Registrou aprovação', set_ended_at: 'Corrigiu data de conclusão', merge: 'Mesclou execução', classify_turn: 'Reclassificou prompt', assign_turns: 'Vinculou prompts a uma US', resolve_inconsistency: 'Resolveu inconsistência', justify_inconsistency: 'Justificou inconsistência' };
+
+  function oneOnOne(d, f) {
+    const a = state.actors.find((x) => x.abe_email === f.abe) || { abe_email: f.abe };
+    const name = a.display_name || a.abe_email;
+    const all = (d.history || d.inc).items;
+    const open = all.filter((i) => i.status === 'open');
+    const treated = all.filter((i) => i.status !== 'open');
+    const byType = Object.entries(open.reduce((m, i) => { m[i.type] = (m[i.type] || 0) + 1; return m; }, {})).sort((x, y) => y[1] - x[1]);
+    const p = d.prompts, s = d.summary;
+    const item = (label, value) => el('div', { class: 'one-item' }, [el('div', { class: 'stat-label' }, label), el('div', { class: 'stat-value num' }, value)]);
+    const print = el('button', { class: 'btn-ghost t no-print', type: 'button' }, [icon('print'), 'Imprimir pauta']);
+    print.addEventListener('click', () => window.print());
+    return card({ title: 'Pauta 1:1 — ' + name, sub: periodText(f.days), actions: print, body: [
+      el('p', { class: 'print-only sub' }, 'Gerado em ' + new Date().toLocaleString('pt-BR') + ' · Lynse Control Plane'),
+      el('div', { class: 'one-grid' }, [
+        item('Inconsistências abertas', fmtInt(open.length)),
+        item('Tratadas no período', fmtInt(treated.length)),
+        s ? item('US concluídas', fmtInt(s.executions.done)) : null,
+        s ? item('Lead time (mediana)', fmtDuration(s.executions.median_duration_seconds)) : null,
+        p && p.has_data ? item('Prompts por US (mediana)', fmtNum1(p.us.median_prompts)) : null,
+        p && p.has_data ? item('Reparos por US (média)', fmtNum1(p.us.mean_correction_prompts)) : null,
+        p && p.has_data ? item('Tokens em correção', fmtPct(p.totals.correction_token_share)) : null,
+        p && p.has_data ? item('Prompts sem classificação', fmtInt(p.totals.unclassified_with_code)) : null,
+      ]),
+      byType.length ? el('div', { class: 'impact-group', style: 'margin-top:14px' }, [
+        el('div', { class: 'impact-label' }, 'Pontos para conversar'),
+        el('ul', { class: 'impact-list' }, byType.map(([t, n]) => el('li', {}, [el('strong', { class: 'num' }, fmtInt(n)), ' ', (INC[t] || { label: t }).label, el('span', { class: 'hint' }, ' — ' + (INC[t] || { fix: '' }).fix)]))),
+      ]) : el('div', { style: 'margin-top:12px' }, emptyNode('Nenhuma inconsistência aberta para este ABE.', true)),
+    ] });
+  }
+
+  function renderInconsistencias(d, f) {
+    const inc = d.inc, items = inc.items, admin = state.role === 'admin';
+    const open = items.filter((i) => i.status === 'open');
+    const typeCount = Object.entries(open.reduce((m, i) => { m[i.type] = (m[i.type] || 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1]);
+    const cols = [
+      { key: 'severity', label: 'Gravidade', sortValue: (r) => ({ high: 3, medium: 2, low: 1 })[r.severity], cell: (r) => el('span', { class: 'sev ' + r.severity }, SEV[r.severity] || r.severity) },
+      { key: 'type', label: 'O que aconteceu', wrap: true, sortValue: (r) => (INC[r.type] || { label: r.type }).label, cell: (r) => who((INC[r.type] || { label: r.type }).label, incDetails(r)) },
+      { key: 'display_name', label: 'ABE', sortValue: (r) => (r.display_name || r.abe_email).toLowerCase(), cell: (r) => who(r.display_name || r.abe_email, r.abe_email) },
+      { key: 'external_ref', label: 'User Story', cell: (r) => r.external_ref ? who(r.external_ref, (r.project_name || '') + (r.execution_status ? ' · ' + (STATUS[r.execution_status] || [r.execution_status])[0] : '')) : who('—', r.claude_session_id ? 'sessão ' + String(r.claude_session_id).slice(0, 8) : null) },
+      { key: 'detected_at', label: 'Detectada', sortValue: (r) => Date.parse(r.detected_at), cell: (r) => fmtDate(r.detected_at) },
+      { key: 'status', label: 'Situação', cell: (r) => { const [label, cls] = INC_STATUS[r.status] || [r.status, 'neutral']; return [el('span', { class: 'st ' + cls }, label), r.resolution_note ? el('small', { class: 'hint', style: 'display:block;max-width:260px' }, (r.resolved_by ? r.resolved_by + ': ' : '') + r.resolution_note) : null]; } },
+    ];
+    if (admin) cols.push({ key: 'actions', label: 'Tratativa', nosort: true, cell: (r) => incActions(r) || el('span', { class: 'hint' }, '—') });
+    const actorCols = [
+      { key: 'display_name', label: 'ABE', sortValue: (r) => (r.display_name || r.abe_email).toLowerCase(), cell: (r) => who(r.display_name || r.abe_email, r.abe_email) },
+      { key: 'open', label: 'Abertas', num: true, cell: (r) => fmtInt(r.open) },
+      { key: 'high_open', label: 'Gravidade alta', num: true, cell: (r) => fmtInt(r.high_open) },
+      { key: 'treated', label: 'Tratadas', num: true, cell: (r) => fmtInt(r.treated) },
+      { key: 'types', label: 'Mais frequentes', nosort: true, wrap: true, cell: (r) => el('span', { class: 'impact-chips' }, Object.entries(r.by_type).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, n]) => el('span', { class: 'chip' }, (INC[t] || { label: t }).label + ' · ' + n))) },
+      { key: 'go', label: '', nosort: true, cell: (r) => el('a', { class: 'card-link', href: hashFor('inconsistencias', { abe: r.abe_email, days: f.days, istatus: 'all' }) }, ['Pauta 1:1', icon('arrow')]) },
+    ];
+    const adjCols = [
+      { key: 'created_at', label: 'Quando', sortValue: (r) => Date.parse(r.created_at), cell: (r) => fmtDate(r.created_at) },
+      { key: 'action', label: 'Ajuste', cell: (r) => who(ADJ_LABEL[r.action] || r.action, r.after && r.after.gate ? GATE_LABEL[r.after.gate] : (r.target_external_ref ? 'em ' + r.target_external_ref : null)) },
+      { key: 'display_name', label: 'ABE', cell: (r) => who(r.display_name || r.abe_email || '—') },
+      { key: 'external_ref', label: 'User Story', cell: (r) => r.external_ref || '—' },
+      { key: 'reason', label: 'Motivo', wrap: true },
+      { key: 'performed_by', label: 'Por' },
+    ];
+    return [
+      f.abe ? oneOnOne(d, f) : null,
+      grid('g-kpi', [
+        kpi({ label: 'Abertas', value: fmtInt(open.length), snapshot: true, foot: el('span', {}, 'aguardando tratativa'), tipHtml: 'Desvios do processo registrados pelo Control Plane. Nenhum deles impediu o ABE de trabalhar.' }),
+        kpi({ label: 'Gravidade alta', value: fmtInt(open.filter((i) => i.severity === 'high').length), snapshot: true, foot: el('span', {}, 'US esquecidas ou concluídas sem aprovação') }),
+        kpi({ label: 'ABEs com pendências', value: fmtInt(new Set(open.map((i) => i.abe_email)).size), snapshot: true, foot: el('span', {}, 'de ' + fmtInt(state.actors.length) + ' ABE(s)') }),
+        kpi({ label: 'Mais frequente', value: typeCount.length ? fmtInt(typeCount[0][1]) : '—', foot: el('span', {}, typeCount.length ? INC[typeCount[0][0]].label : 'nada aberto') }),
+      ]),
+      !admin ? el('div', { class: 'note' }, 'Você está vendo só as suas inconsistências. Os ajustes são feitos pelo gestor, com a chave administrativa.') : null,
+      !f.abe && inc.by_actor.length ? card({ title: 'Por ABE', info: 'Abra a pauta de um ABE para levar à reunião de 1:1: inconsistências, retrabalho e entregas do período, pronta para imprimir.', body: sortableTable('inc-actors', 'Inconsistências por ABE no recorte atual.', actorCols, inc.by_actor, { key: 'open', dir: 'desc' }) }) : null,
+      card({ title: 'Inconsistências', sub: items.length + ' no recorte', info: 'Uma US só fica ativa por vez para cada ABE. Quando o processo não é seguido, o Control Plane registra aqui e segue. O limite para considerar uma US parada é de ' + inc.stale_hours + 'h.',
+        body: items.length ? sortableTable('inc', 'Inconsistências do processo. A tratativa fica registrada no histórico de ajustes.', cols, items, { key: 'severity', dir: 'desc' }) : emptyNode(f.istatus === 'open' ? 'Nenhuma inconsistência aberta neste recorte.' : 'Nenhuma inconsistência neste recorte.', true) }),
+      admin && d.adjustments ? card({ title: 'Histórico de ajustes manuais', sub: periodText(f.days), body: d.adjustments.items.length ? sortableTable('adj', 'Todo ajuste manual fica registrado com motivo, autor e o valor anterior.', adjCols, d.adjustments.items, { key: 'created_at', dir: 'desc' }) : emptyNode('Nenhum ajuste manual no período.') }) : null,
+    ];
+  }
+
   // ---------- Filtros ----------
   function orgOptions() {
     const m = new Map();
@@ -1378,7 +1942,10 @@
     org: { label: 'Organização', server: true, options: orgOptions },
     project: { label: 'Projeto', server: true, options: (f) => [['', 'Todos'], ...state.options.filter((o) => !f.org || o.organization_slug === f.org).map((o) => [o.project_slug, o.project_name])] },
     days: { label: 'Período', server: true, options: () => PERIODS },
-    status: { label: 'Status', options: () => [['', 'Todos'], ['open', 'Em aberto'], ['stale', 'Abertas há mais de 7 dias'], ['done', 'Concluídas'], ['blocked', 'Bloqueadas'], ['cancelled', 'Canceladas']] },
+    status: { label: 'Status', options: () => [['', 'Todos'], ['open', 'Em aberto'], ['stale', 'Abertas há mais de 7 dias'], ['done', 'Concluídas'], ['blocked', 'Bloqueadas'], ['inconsistent', 'Inconsistentes'], ['cancelled', 'Canceladas']] },
+    abe: { label: 'ABE', server: true, options: (f) => [['', 'Todos'], ...state.actors.filter((a) => !f.org || a.organization_slug === f.org).map((a) => [a.abe_email, a.display_name || a.abe_email])] },
+    istatus: { label: 'Situação', server: true, options: () => [['open', 'Abertas'], ['treated', 'Tratadas no período'], ['all', 'Todas']] },
+    itype: { label: 'Tipo', server: true, options: () => [['', 'Todos'], ...Object.entries(INC).map(([k, v]) => [k, v.label])] },
     q: { label: 'Buscar', type: 'search', placeholder: 'User Story, título, ABE ou projeto' },
     env: { label: 'Ambiente', options: () => [['', 'Todos'], ['dev', 'Desenvolvimento'], ['hml', 'Homologação'], ['prod', 'Produção']] },
     by: { label: 'Recorte', options: () => [['by_actor', 'Por ABE'], ['by_project', 'Por projeto'], ['by_organization', 'Por organização'], ['by_work_item', 'Por User Story']] },
@@ -1419,7 +1986,7 @@
   function changeFilter(key, value) {
     const page = state.page;
     const f = { ...state.filters[page], [key]: value };
-    if (key === 'org') f.project = '';
+    if (key === 'org') { f.project = ''; f.abe = state.actors.some((a) => a.abe_email === f.abe && (!value || a.organization_slug === value)) ? f.abe : ''; }
     state.filters[page] = sanitize(page, f);
     history.replaceState(null, '', hashFor(page));
     updateNav();
@@ -1520,7 +2087,7 @@
     btn.disabled = true;
     setLoginStatus('Conectando…');
     try {
-      state.options = (await api('/api/v1/analytics/filters')).items;
+      applyFilterOptions(await api('/api/v1/analytics/filters'));
       state.me = await api('/api/v1/me').catch(() => ({ role: 'abe' }));
       state.role = state.me.role;
       lsSet(LS.conn, JSON.stringify({ apiUrl: state.apiUrl, apiKey: state.apiKey }));
